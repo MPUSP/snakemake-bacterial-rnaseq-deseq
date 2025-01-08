@@ -1,0 +1,10 @@
+results/**
+resources/**
+logs/**
+.snakemake
+.snakemake/**
+.test/results/*
+.test/data/*
+.test/.snakemake/*
+.test/config/samplesheet/*
+config/samplesheet/*

@@ -1,0 +1,81 @@
+samplesheet: "config/samplesheet/samples_mpusp_custom.tsv"
+libtype: "sense"
+
+get_genome:
+  database: "ncbi"
+  assembly: "GCF_000006785.2"
+  fasta: null
+  gff: null
+  gff_source_type:
+    [
+      "RefSeq": "gene",
+      "RefSeq": "pseudogene",
+      "RefSeq": "CDS",
+      "Protein Homology": "CDS"
+    ]
+
+extract_features:
+  biotypes: ["protein_coding", "pseudogene", "ncRNA", "rRNA", "tRNA"]
+
+umi_dedup: "--edit-distance-threshold=0"
+umi_extraction:
+  method: string
+  pattern: "NNNXXXNNNXXXNNN"
+
+cutadapt:
+  read1_adapter: "TACACGACGCTCTTCCGATCT"
+  read2_adapter: "AGATCGGAAGAGCGTCGTGTA"
+  default:
+    [
+      "-q 10 ",
+      "-m 18 ",
+      "--overlap=3"
+    ]
+
+star:
+  index: null
+  genomeSAindexNbases: 9
+  multi: 10
+  sam_multi: 1
+  intron_max: 1
+  default:
+    [
+      "--readFilesCommand zcat ",
+      "--outSAMstrandField None ",
+      "--outSAMattributes All ",
+      "--outSAMattrIHstart 0 ",
+      "--outFilterType Normal ",
+      "--outFilterMultimapScoreRange 1 ",
+      "-o STARmappings ",
+      "--outSAMtype BAM Unsorted ",
+      "--outStd BAM_Unsorted ",
+      "--outMultimapperOrder Random ",
+      "--alignEndsType EndToEnd",
+    ]
+
+feature_counts:
+  defaults:
+    [
+      "-F GTF",
+      "-t gene",
+      "-g locus_tag",
+      "-M",
+      "--fracOverlap 0.2",
+      "--largestOverlap"
+    ]
+
+deeptools:
+  bin_size: 1
+  normalize: "CPM" # "RPKM"
+
+
+multiqc:
+    config: "config/multiqc_config.yml"
+    defaults: ["--dirs-depth 2 ",
+        "--exclude general_stats ",
+        "--force ",
+        "--dirs"]
+
+counts_folder: "results/quantify_biotypes/"
+gff_file: "results/extracted_features/biotypes.gff"
+results_dir: "results/deseq2/"

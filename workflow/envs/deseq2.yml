@@ -1,0 +1,14 @@
+name: deseq2
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base     
+  - bioconductor-deseq2  
+  - bioconductor-rtracklayer     
+  - r-ggplot2         # For generating plots
+  - r-dplyr           # Data manipulation for filtering protein-coding genes
+  - r-readr           # For reading TSV/CSV files
+  - r-stringr
+  - r-ggrepel
+  - r-data.table 
