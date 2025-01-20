@@ -9,7 +9,7 @@ To set up the pipeline, follow these steps:
 
 1. Clone this repository using the following command:  
     ```bash
-    git clone https://github.com/your-username/snakemake-bacterial-rnaseq-deseq.git
+    git clone https://github.com/adarshaach/snakemake-bacterial-rnaseq-deseq
     ```
    
 2. Navigate to the cloned repository directory:  
@@ -34,7 +34,7 @@ To set up the pipeline, follow these steps:
 The pipeline requires the following input files:  
 
 - **`samplesheet.tsv`** – Contains metadata for the RNA-Seq samples (e.g., condition, replicate).  
-- **`sample.counts`** – Coverage data for each sample obtained from the preprocessing pipeline.  
+- **`{sample_name}.counts`** – Coverage data for each sample obtained from the preprocessing pipeline.  
 - **`biotypes.gff`** – Gene feature annotations for filtering protein-coding genes.  
 
 ## Execution
