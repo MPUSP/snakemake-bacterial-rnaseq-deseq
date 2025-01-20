@@ -1,5 +1,5 @@
 samplesheet: "config/samplesheet/samplesheet.tsv"
-libtype: "forward"
+libtype: "sense"
 
 get_genome:
   database: "ncbi"
@@ -11,27 +11,21 @@ get_genome:
       "RefSeq": "gene",
       "RefSeq": "pseudogene",
       "RefSeq": "CDS",
-      "Protein Homology": "CDS"
+      "Protein Homology": "CDS",
     ]
 
 extract_features:
   biotypes: ["protein_coding", "pseudogene", "ncRNA", "rRNA", "tRNA"]
 
+umi_dedup: "--edit-distance-threshold=0"
 umi_extraction:
   method: string
-  pattern: "NNNXXXNNNXXXNNN"
-
-umi_dedup: "--edit-distance-threshold=0"
+  pattern: "--bc-pattern NNNCCCNNNCCCNNNC"
 
 cutadapt:
   read1_adapter: "TACACGACGCTCTTCCGATCT"
   read2_adapter: "AGATCGGAAGAGCGTCGTGTA"
-  default:
-    [
-      "-q 10 ",
-      "-m 18 ",
-      "--overlap=3"
-    ]
+  default: ["-q 10 ", "-m 18 ", "--overlap=3"]
 
 star:
   index: null
@@ -62,21 +56,16 @@ feature_counts:
       "-g locus_tag",
       "-M",
       "--fracOverlap 0.2",
-      "--largestOverlap"
+      "--largestOverlap",
     ]
 
 deeptools:
   bin_size: 1
-  normalize: "CPM" # "RPKM"
-
+  normalize: "CPM"
+  defaults: "--exactScaling"
+  paired_end: "--extendReads"
 
 multiqc:
-    config: "config/multiqc_config.yml"
-    defaults: ["--dirs-depth 2 ",
-        "--exclude general_stats ",
-        "--force ",
-        "--dirs"]
-
-counts_folder: "results/quantify_biotypes/"
-gtf_file: "results/extracted_features/biotypes.gtf"
-results_dir: "results/deseq2/"
+  config: "config/multiqc_config.yml"
+  defaults:
+    ["--dirs-depth 2 ", "--exclude general_stats ", "--force ", "--dirs"]
