@@ -3,7 +3,7 @@ libtype: "sense"
 
 get_genome:
   database: "ncbi"
-  assembly: "GCF_000006785.2"
+  assembly: "GCF_043231225.1"
   fasta: null
   gff: null
   gff_source_type:
@@ -20,12 +20,12 @@ extract_features:
 umi_dedup: "--edit-distance-threshold=0"
 umi_extraction:
   method: string
-  pattern: "--bc-pattern NNNCCCNNNCCCNNNC"
+  pattern: "--bc-pattern X --bc-pattern2 NNNNNN --3prime --ignore-read-pair-suffixes"
 
 cutadapt:
-  read1_adapter: "TACACGACGCTCTTCCGATCT"
-  read2_adapter: "AGATCGGAAGAGCGTCGTGTA"
-  default: ["-q 10 ", "-m 18 ", "--overlap=3"]
+  read1_adapter: "TTCAAAGCATCAGCCC"
+  read2_adapter: "GGGCTGATGCTTTGAA"
+  default: ["-q 10 ", "-m 18 ", "--overlap=10"]
 
 star:
   index: null

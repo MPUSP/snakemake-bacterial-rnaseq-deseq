@@ -12,6 +12,7 @@ samples = (
     .sort_index()
 )
 
+
 wildcard_constraints:
     sample="|".join(samples.index),
     read="|".join(["R1", "R2"]),
