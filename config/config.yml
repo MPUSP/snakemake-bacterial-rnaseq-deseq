@@ -1,4 +1,4 @@
-samplesheet: "config/samplesheet/samplesheet.tsv"
+samplesheet: ".test/config/samplesheet/samplesheet.tsv"
 libtype: "sense"
 
 get_genome:
