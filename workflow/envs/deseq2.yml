@@ -3,12 +3,14 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
-  - r-base     
-  - bioconductor-deseq2  
-  - bioconductor-rtracklayer     
-  - r-ggplot2         # For generating plots
-  - r-dplyr           # Data manipulation for filtering protein-coding genes
-  - r-readr           # For reading TSV/CSV files
+  - r-base
+  - bioconductor-deseq2
+  - bioconductor-rtracklayer
+  - bioconductor-biocparallel
+  - r-ggplot2
+  - r-dplyr
+  - r-tibble
+  - r-readr
   - r-stringr
   - r-ggrepel
-  - r-data.table 
+  - r-data.table

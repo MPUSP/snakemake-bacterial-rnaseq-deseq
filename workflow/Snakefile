@@ -2,8 +2,8 @@
 # A Snakemake workflow for the preprocessing of short   #
 # read RNAseq data in bacteria.                         #
 #                                                       #
-# Authors: Rina Ahmed-Begrich                           #
-# Date: 2024-12-03                                      #
+# Authors: Adarsha Acharya, Michael Jahn, MPUSP team    #
+# Date: 2025-01-08                                      #
 # License: Free for non-commercial use (see LICENSE)    #
 #          For all 3rd party tools separate licenses    #
 #          may apply.                                   #
@@ -12,40 +12,40 @@ import os
 import pandas as pd
 
 
-__author__ = "Rina Ahmed-Begrich"
-__year__ = "2024"
-
 bold = "\033[1m"
 green = "\033[92m"
 cyan = "\033[36m"
 end = "\033[0m"
 
-msg = f"""{cyan}Bacterial-rnaseq-preprocessing: A Snakemake workflow
-for the preprocessing of short read RNAseq data in bacteria.{end}"""
 
-epilog = f"""{cyan}Written by {__author__},
-Max Planck Unit for the Science of Pathogens. Copyright (c) {__year__}.
-Copyright Holder All Rights Reserved.{end}
-
-"""
+msg = f"""{cyan}Bacterial-rnaseq-deseq: A Snakemake workflow
+for differential expression analysis of RNAseq data.{end}"""
 
 
 # load configuration
 # -----------------------------------------------------
 configfile: "config/config.yml"
 
+
 # load rules
 # -----------------------------------------------------
 include: "rules/common.smk"
 include: "rules/deseq2.smk"
 
+
 module rnaseq_preprocessing:
     snakefile:
-        github("MPUSP/snakemake-bacterial-rnaseq-preprocessing", path="workflow/Snakefile", tag="v1.0.0")
+        github(
+            "MPUSP/snakemake-bacterial-rnaseq-preprocessing",
+            path="workflow/Snakefile",
+            tag="v1.2.0",
+        )
     config:
         config
 
+
 use rule * from rnaseq_preprocessing as prepro_*
+
 
 onstart:
     print("\n--- Analysis started...\n")
@@ -61,7 +61,6 @@ onstart:
 onsuccess:
     print()
     print(msg)
-    print(epilog)
     print("--- Workflow finished, no error! -----------------------------------")
     print()
     debug = os.path.join(os.getcwd(), "results/workflow.log")
@@ -73,7 +72,6 @@ onsuccess:
 onerror:
     print()
     print(msg)
-    print(epilog)
     print("--- An error occurred! ---------------------------------------------")
     print()
     error = os.path.join(os.getcwd(), "results/error.log")
@@ -84,6 +82,6 @@ onerror:
 # # -----------------------------------------------------
 rule all:
     input:
+        "results/report/multiqc_report.html",
         "results/deseq2/deseq2_results.csv",
-        get_final_output(),
     default_target: True

@@ -1,9 +1,9 @@
-samplesheet: "config/samplesheet/samples_mpusp_custom.tsv"
+samplesheet: "config/samplesheet/samplesheet.tsv"
 libtype: "sense"
 
 get_genome:
   database: "ncbi"
-  assembly: "GCF_000006785.2"
+  assembly: "GCF_043231225.1"
   fasta: null
   gff: null
   gff_source_type:
@@ -11,7 +11,7 @@ get_genome:
       "RefSeq": "gene",
       "RefSeq": "pseudogene",
       "RefSeq": "CDS",
-      "Protein Homology": "CDS"
+      "Protein Homology": "CDS",
     ]
 
 extract_features:
@@ -20,17 +20,12 @@ extract_features:
 umi_dedup: "--edit-distance-threshold=0"
 umi_extraction:
   method: string
-  pattern: "NNNXXXNNNXXXNNN"
+  pattern: "--bc-pattern X --bc-pattern2 NNNNNN --3prime --ignore-read-pair-suffixes"
 
 cutadapt:
-  read1_adapter: "TACACGACGCTCTTCCGATCT"
-  read2_adapter: "AGATCGGAAGAGCGTCGTGTA"
-  default:
-    [
-      "-q 10 ",
-      "-m 18 ",
-      "--overlap=3"
-    ]
+  read1_adapter: "TTCAAAGCATCAGCCC"
+  read2_adapter: "GGGCTGATGCTTTGAA"
+  default: ["-q 10 ", "-m 18 ", "--overlap=10"]
 
 star:
   index: null
@@ -61,21 +56,16 @@ feature_counts:
       "-g locus_tag",
       "-M",
       "--fracOverlap 0.2",
-      "--largestOverlap"
+      "--largestOverlap",
     ]
 
 deeptools:
   bin_size: 1
-  normalize: "CPM" # "RPKM"
-
+  normalize: "CPM"
+  defaults: "--exactScaling"
+  paired_end: "--extendReads"
 
 multiqc:
-    config: "config/multiqc_config.yml"
-    defaults: ["--dirs-depth 2 ",
-        "--exclude general_stats ",
-        "--force ",
-        "--dirs"]
-
-counts_folder: "results/quantify_biotypes/"
-gff_file: "results/extracted_features/biotypes.gff"
-results_dir: "results/deseq2/"
+  config: "config/multiqc_config.yml"
+  defaults:
+    ["--dirs-depth 2 ", "--exclude general_stats ", "--force ", "--dirs"]
