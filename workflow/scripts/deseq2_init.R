@@ -9,10 +9,14 @@ suppressPackageStartupMessages({
 
 counts_files <- snakemake@input[["counts_dir"]]
 gff_file <- snakemake@input[["gff"]]
+samplesheet_file <- snakemake@input[["samplesheet"]]
 output_file <- snakemake@output[["filtered_counts"]]
 merged_output_file <- snakemake@output[["merged_counts"]]
 
 messages <- c()
+df_sample <- read_table(samplesheet_file, show_col_types = FALSE)
+sample_order <- df_sample$sample
+
 
 read_counts <- function(file) {
   df <- read_tsv(file, comment = "#", show_col_types = FALSE)
@@ -27,6 +31,15 @@ df_merged_counts <- Reduce(
   lapply(counts_files, read_counts)
 ) %>%
   as_tibble()
+
+if (!all(colnames(df_merged_counts)[-1] == sample_order)) {
+  messages <- append(
+    messages,
+    "Sample names of counts matrix do not match sample sheet order, reordering."
+  )
+  df_merged_counts <- df_merged_counts[, c("Geneid", sample_order)]
+}
+
 write_csv(df_merged_counts, file = merged_output_file)
 
 gff_data <- rtracklayer::import.gff(gff_file)
