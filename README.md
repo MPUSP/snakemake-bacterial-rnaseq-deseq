@@ -2,6 +2,7 @@
 
 This repository contains a **Snakemake** workflow for performing **RNA-Seq differential gene expression analysis** using [**DESeq2**](https://doi.org/10.1186/s13059-014-0550-8). The workflow obtains processed data from the [**RNA-Seq preprocessing**](https://github.com/MPUSP/snakemake-bacterial-rnaseq-preprocessing) workflow and then performs DESeq2 analysis, generating various plots and results for downstream analysis.
 
+
 ## Installation
 
 To set up the pipeline, follow these steps:
