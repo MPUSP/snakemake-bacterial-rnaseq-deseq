@@ -69,3 +69,7 @@ multiqc:
   config: "config/multiqc_config.yml"
   defaults:
     ["--dirs-depth 2 ", "--exclude general_stats ", "--force ", "--dirs"]
+
+deseq2:
+  threshold_pval: 0.05
+  threshold_log2fc: 2.0

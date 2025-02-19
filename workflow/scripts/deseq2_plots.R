@@ -3,6 +3,7 @@ suppressPackageStartupMessages({
   library(readr)
   library(tibble)
   library(dplyr)
+  library(tidyr)
   library(ggplot2)
   library(ggrepel)
   library(DESeq2)
@@ -15,6 +16,9 @@ samplesheet_file <- snakemake@input[["samplesheet"]]
 deseq_results_file <- snakemake@output[["deseq_results"]]
 output_dir <- snakemake@output[["plots_dir"]]
 n_cores <- snakemake@threads
+threshold_pval <- snakemake@config$deseq2$threshold_pval
+threshold_log2fc <- snakemake@config$deseq2$threshold_log2fc
+
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 messages <- c()
 
@@ -29,10 +33,10 @@ metadata <- data.frame(
 
 # check that the order of file names corresponds to colnames of counts
 if (!all(colnames(df_counts[-1]) == df_sample$sample)) {
-  messages <- append(
-    messages,
-    "Sample names of sample sheet and counts matrix do not correspond, reordering."
-  )
+  messages <- append(messages, paste0(
+    "Sample names of sample sheet and counts ",
+    "matrix do not correspond, reordering."
+  ))
   df_counts <- df_counts[c("Geneid", df_sample$sample)]
 }
 
@@ -40,12 +44,40 @@ if (!all(colnames(df_counts[-1]) == df_sample$sample)) {
 n_conditions <- length(levels(metadata$condition))
 if (n_conditions == 1) {
   design <- formula(~1)
-  messages <- append(messages, "found only one condition: using design '~ 1' (deviation from null)")
+  messages <- append(messages, paste0(
+    "found only one condition: ",
+    "using design '~ 1' (deviation from null)"
+  ))
 } else {
   design <- formula(~condition)
   messages <- append(messages, paste0(
     "found ", n_conditions,
     " conditions: using design '~ condition' (all vs all)"
+  ))
+}
+
+# define the comparisons to be made
+if (all(is.na(df_sample$comparison))) {
+  df_comparison <- df_sample %>%
+    mutate(reference = condition[1]) %>%
+    select(condition, reference) %>%
+    filter(condition != reference) %>%
+    distinct()
+  messages <- append(messages, paste0(
+    "making ", nrow(df_comparison),
+    " comparisons by constrasting the first condition against all others"
+  ))
+} else {
+  df_comparison <- df_sample %>%
+    filter(!is.na(comparison)) %>%
+    dplyr::select(condition, comparison) %>%
+    distinct() %>%
+    tidyr::separate_longer_delim(comparison, delim = ",") %>%
+    dplyr::rename(reference = comparison) %>%
+    distinct() %>%
+    filter(!condition == reference)
+  messages <- append(messages, paste0(
+    "making ", nrow(df_comparison), " comparisons as stated in the sample sheet"
   ))
 }
 
@@ -68,11 +100,7 @@ if (n_conditions == 1) {
       condition = levels(metadata$condition)
     )
 } else {
-  deseq_result <- df_sample %>%
-    mutate(reference = condition[1]) %>%
-    select(condition, reference) %>%
-    filter(condition != reference) %>%
-    distinct() %>%
+  deseq_result <- df_comparison %>%
     mutate(comparison = seq_along(reference)) %>%
     group_by(comparison) %>%
     group_split() %>%
@@ -93,7 +121,15 @@ if (n_conditions == 1) {
 # slightly reformat df and export
 deseq_result <- deseq_result %>%
   relocate(reference, condition) %>%
-  mutate(padj = replace(padj, is.na(padj), 1))
+  mutate(
+    padj = replace(padj, is.na(padj), 1),
+    significance = ifelse(
+      padj <= threshold_pval & log2FoldChange >= threshold_log2fc,
+      "significant",
+      "not significant"
+    ),
+    significance = factor(significance, c("significant", "not significant"))
+  )
 write_csv(deseq_result, file = deseq_results_file)
 
 
@@ -130,9 +166,18 @@ volcano_plot <- ggplot(
   data = deseq_result,
   aes(x = log2FoldChange, y = -log10(padj))
 ) +
-  geom_point(aes(color = padj <= 0.05 & log2FoldChange >= 2), alpha = 0.6) +
+  geom_point(aes(color = significance), alpha = 0.6) +
   theme_bw() +
-  labs(title = "Volcano Plot") +
+  labs(
+    title = "Volcano Plot",
+    subtitle = paste0("significance: p ≤ ", threshold_pval, ", log2FC ≥ ", threshold_log2fc),
+    x = "Log2 Fold Change",
+    y = "-log10 p-value"
+  ) +
+  lims(
+    x = {if (any(abs(range(deseq_result$log2FoldChange)) > 2)) {range(deseq_result$log2FoldChange)} else {c(-2, 2)}},
+    y = {if (max(-log10(deseq_result$padj)) > 3) {c(0, max(-log10(deseq_result$padj)))} else {c(0, 3)}}
+  ) +
   theme(
     legend.title = element_blank(),
     legend.position = "bottom",
@@ -152,12 +197,19 @@ ma_plot <- ggplot(
   data = deseq_result,
   aes(x = baseMean, y = log2FoldChange)
 ) +
-  geom_point(aes(color = padj < 0.05), alpha = 0.6) +
+  geom_point(aes(color = significance), alpha = 0.6) +
   theme_bw() +
-  labs(title = "MA Plot") +
-  xlab("Mean Expression") +
-  ylab("Log2 Fold Change") +
-  scale_x_continuous(trans = "log10") +
+  labs(
+    title = "MA Plot",
+    subtitle = paste0("significance: p ≤ ", threshold_pval, ", log2FC ≥ ", threshold_log2fc),
+    x = "Mean Expression",
+    y = "Log2 Fold Change"
+  ) +
+  ylim({if (any(abs(range(deseq_result$log2FoldChange)) > 2)) {range(deseq_result$log2FoldChange)} else {c(-2, 2)}}) +
+  scale_x_continuous(
+    limits = {if (max(deseq_result$baseMean) > 10) {c(0.1, max(deseq_result$baseMean))} else {c(0.1, 10)}},
+    transform = "log10"
+  ) +
   theme(
     legend.title = element_blank(),
     legend.position = "bottom",
