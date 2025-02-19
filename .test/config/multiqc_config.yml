@@ -4,8 +4,8 @@ report_header_info:
   - Sequencing Platform: "short read sequencing"
   - Sequencing Setup: "Total RNAseq"
 
-title: "Bacterial RNAseq Preprocessing"
-subtitle: "A Snakemake workflow for the preprocessing of short read rnaseq data in bacteria."
+title: "Bacterial RNAseq Processing"
+subtitle: "A Snakemake workflow for the processing of short read rnaseq data in bacteria."
 intro_text: ""
 
 show_analysis_paths: false
