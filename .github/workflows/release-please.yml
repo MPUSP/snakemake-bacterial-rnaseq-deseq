@@ -16,4 +16,4 @@ jobs:
       - uses: google-github-actions/release-please-action@v3
         with:
           release-type: go # just keep a changelog, no version anywhere outside of git tags
-          package-name: snakemake-bacterial-rnaseq-preprocessing
+          package-name: snakemake-bacterial-rnaseq-deseq
