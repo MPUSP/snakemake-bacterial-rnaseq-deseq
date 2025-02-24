@@ -1,7 +1,6 @@
 # RNA-Seq Differential Expression Analysis Pipeline
 
-This repository contains a **Snakemake** workflow for performing **RNA-Seq differential gene expression analysis** using [**DESeq2**](https://doi.org/10.1186/s13059-014-0550-8). The workflow obtains processed data from the [**RNA-Seq preprocessing**](https://github.com/MPUSP/snakemake-bacterial-rnaseq-preprocessing) workflow and then performs DESeq2 analysis, generating various plots and results for downstream analysis.
-
+This repository contains a **Snakemake** workflow for performing **RNA-Seq differential gene expression analysis** using [**DESeq2**](https://doi.org/10.1186/s13059-014-0550-8). The workflow obtains processed data from the [**RNA-Seq processing**](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing) workflow and then performs DESeq2 analysis, generating various plots and results for downstream analysis.
 
 ## Installation
 
@@ -26,7 +25,7 @@ To set up the pipeline, follow these steps:
    conda activate snakemake-bacterial-rnaseq-deseq
    ```
 
-4. Export your GitHub token to import the preprocessing pipeline module (for non-public workflows):
+4. Export your GitHub token to import the processing pipeline module (for non-public workflows):
 
    ```bash
    export GITHUB_TOKEN=<your_personal_access_token>
@@ -34,17 +33,17 @@ To set up the pipeline, follow these steps:
 
 ## Input Files
 
-The pipeline requires the following input files when running it **together with the preprocessing module**ö :
+The pipeline requires the following input files when running it **together with the processing module**:
 
 - **`samplesheet.tsv`** – metadata for the RNA-Seq samples (e.g., condition, replicate)
-- **reference genome** and **`fastq.gz`** read files as explained in more detail on the [preprocessing workflow README](https://github.com/MPUSP/snakemake-bacterial-rnaseq-preprocessing#running-the-workflow)
+- **reference genome** and **`fastq.gz`** read files as explained in more detail on the [processing workflow README](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing#running-the-workflow)
 
-The pipeline contains simulated paired-end `fastq.gz` read files for running automatic tests. These files were generated using `dwgsim` and extended with UMIs and adapters on the 3' end of read 2. The reads map to the recently updated *S. pyogenes* SF370 reference genome ([`GCF_043231225.1`](https://doi.org/10.1128/mra.01197-24)). The script to simulate reads can be found in `.test/data/simulate_reads.sh`.
+The pipeline contains simulated paired-end `fastq.gz` read files for running automatic tests. These files were generated using `dwgsim` and extended with UMIs and adapters on the 3' end of read 2. The reads map to the recently updated _S. pyogenes_ SF370 reference genome ([`GCF_043231225.1`](https://doi.org/10.1128/mra.01197-24)). The script to simulate reads can be found in `.test/data/simulate_reads.sh`.
 
 Using the workflow as a **standalone module**, it requires instead:
 
-- **`<sample_name>.counts`** – coverage data for each sample obtained as output from the [RNA-Seq preprocessing](https://github.com/MPUSP/snakemake-bacterial-rnaseq-preprocessing) workflow
-- **`biotypes.gff`** – gene feature annotations for filtering protein-coding genes, obtained as output from the [RNA-Seq preprocessing](https://github.com/MPUSP/snakemake-bacterial-rnaseq-preprocessing) workflow
+- **`<sample_name>.counts`** – coverage data for each sample obtained as output from the [RNA-Seq processing](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing) workflow
+- **`biotypes.gff`** – gene feature annotations for filtering protein-coding genes, obtained as output from the [RNA-Seq processing](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing) workflow
 
 ## Execution
 

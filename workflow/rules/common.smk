@@ -1,4 +1,5 @@
 import pandas as pd
+from snakemake.utils import validate
 
 
 # read sample sheet
@@ -11,6 +12,11 @@ samples = (
     .set_index("sample", drop=False)
     .sort_index()
 )
+
+
+# validate sample sheet and config file
+validate(samples, schema="../../config/schemas/samples.schema.yml")
+validate(config, schema="../../config/schemas/config.schema.yml")
 
 
 wildcard_constraints:

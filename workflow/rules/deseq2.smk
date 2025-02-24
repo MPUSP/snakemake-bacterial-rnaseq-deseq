@@ -5,6 +5,7 @@ rule deseq2_init:
             sample=samples.index,
         ),
         gff="results/extracted_features/biotypes.gff",
+        samplesheet=config["samplesheet"],
     output:
         filtered_counts="results/deseq2/filtered_counts.csv",
         merged_counts="results/deseq2/merged_counts.csv",

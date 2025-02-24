@@ -1,0 +1,103 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+description: config file structure
+properties:
+  samplesheet:
+    type: string
+  libtype:
+    type: string
+  get_genome:
+    properties:
+      database:
+        type: [string, "null"]
+      assembly:
+        type: [string, "null"]
+      fasta:
+        type: [string, "null"]
+      gff:
+        type: [string, "null"]
+      gff_source_type:
+        type: array
+  extract_features:
+    properties:
+      biotypes:
+        type: array
+        items:
+          type: string
+  umi_dedup:
+    type: string
+  umi_extraction:
+    properties:
+      method:
+        type: string
+        enum: ["regex", "string"]
+      pattern:
+        type: string
+  cutadapt:
+    properties:
+      read1_adapter:
+        type: string
+      read2_adapter:
+        type: string
+      default:
+        type: array
+        items:
+          type: string
+  star:
+    properties:
+      index:
+        type: [string, "null"]
+      genomeSAindexNbases:
+        type: integer
+      multi:
+        type: integer
+      sam_multi:
+        type: integer
+      intron_max:
+        type: integer
+      default:
+        type: array
+        items:
+          type: string
+  feature_counts:
+    properties:
+      defaults:
+        type: array
+        items:
+          type: string
+  deeptools:
+    properties:
+      bin_size:
+        type: integer
+      normalize:
+        type: string
+      defaults:
+        type: string
+      paired_end:
+        type: string
+  multiqc:
+    properties:
+      config:
+        type: string
+      defaults:
+        type: array
+        items:
+          type: string
+  deseq2:
+    properties:
+      threshold_pval:
+        type: number
+      threshold_log2fc:
+        type: number
+required:
+  - samplesheet
+  - libtype
+  - get_genome
+  - extract_features
+  - umi_dedup
+  - umi_extraction
+  - cutadapt
+  - star
+  - feature_counts
+  - deeptools
+  - multiqc
+  - deseq2

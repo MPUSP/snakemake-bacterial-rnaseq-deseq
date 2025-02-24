@@ -1,0 +1,40 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+description: an entry in the sample sheet
+properties:
+  sample:
+    type: string
+    description: sample name/identifier
+  condition:
+    type: string
+    description: sample condition that will be compared during differential analysis
+  replicate:
+    type: number
+    default: 1
+    description: consecutive numbers representing multiple replicates of one condition
+  experiment:
+    type: string
+    description: type of RNAseq experiment
+  data_folder:
+    type: string
+    description: path to fastq files
+  fq1:
+    type: string
+    description: names of fastq files, read 1
+  fq2:
+    type: string
+    description: names of fastq files, read 2 (optional)
+  fq_umi:
+    type: string
+    description: names of fastq files, UMI (optional)
+  comparison:
+    type: [string, "null", "na"]
+    description: names of fastq files, UMI (optional)
+
+required:
+  - sample
+  - condition
+  - replicate
+  - experiment
+  - data_folder
+  - fq1
+  - comparison
