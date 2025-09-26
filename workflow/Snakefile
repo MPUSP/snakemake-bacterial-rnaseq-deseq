@@ -2,16 +2,6 @@ import os
 import pandas as pd
 
 
-bold = "\033[1m"
-green = "\033[92m"
-cyan = "\033[36m"
-end = "\033[0m"
-
-
-msg = f"""{cyan}Bacterial-rnaseq-deseq: A Snakemake workflow
-for differential expression analysis of RNAseq data.{end}"""
-
-
 # load configuration
 # -----------------------------------------------------
 configfile: "config/config.yml"
@@ -37,39 +27,22 @@ module rnaseq_processing:
 use rule * from rnaseq_processing as process_*
 
 
+# optional messages, log and error handling
+# -----------------------------------------------------
 onstart:
-    print("\n--- Analysis started...\n")
-    print()
-    print("--- Analysis parameters --------------------------------------------\n")
-    print(f"Current working directory: {os.getcwd()}")
-    print(f"Output directory: {os.path.join(os.getcwd(), 'results')}")
-    print()
-    print(f"RNAseq samples: {list(samples.index)}")
-    print()
+    print("\n--- Analysis started ---\n")
 
 
 onsuccess:
-    print()
-    print(msg)
-    print("--- Workflow finished, no error! -----------------------------------")
-    print()
-    debug = os.path.join(os.getcwd(), "results/workflow.log")
-    shell(
-        "cat {log} > {debug} && echo -e '\nWorkflow finished, no error!\n' >> {debug}"
-    )
+    print("\n--- Workflow finished! ---\n")
 
 
 onerror:
-    print()
-    print(msg)
-    print("--- An error occurred! ---------------------------------------------")
-    print()
-    error = os.path.join(os.getcwd(), "results/error.log")
-    shell("cat {log} > {error} && echo -e '\nAn error occurred!' >> {error}")
+    print("\n--- An error occurred! ---\n")
 
 
 # target rules
-# # -----------------------------------------------------
+# -----------------------------------------------------
 rule all:
     input:
         "results/report/multiqc_report.html",
