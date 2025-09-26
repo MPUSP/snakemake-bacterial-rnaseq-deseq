@@ -14,9 +14,6 @@ properties:
   experiment:
     type: string
     description: type of RNAseq experiment
-  data_folder:
-    type: string
-    description: path to fastq files
   fq1:
     type: string
     description: names of fastq files, read 1
@@ -35,6 +32,5 @@ required:
   - condition
   - replicate
   - experiment
-  - data_folder
   - fq1
   - comparison
