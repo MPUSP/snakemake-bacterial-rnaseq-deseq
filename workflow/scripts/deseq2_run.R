@@ -4,8 +4,6 @@ suppressPackageStartupMessages({
   library(tibble)
   library(dplyr)
   library(tidyr)
-  library(ggplot2)
-  library(ggrepel)
   library(DESeq2)
   library(BiocParallel)
 })
@@ -14,12 +12,11 @@ suppressPackageStartupMessages({
 counts_file <- snakemake@input[["filtered_counts"]]
 samplesheet_file <- snakemake@input[["samplesheet"]]
 deseq_results_file <- snakemake@output[["deseq_results"]]
-output_dir <- snakemake@output[["plots_dir"]]
 n_cores <- snakemake@threads
 threshold_pval <- snakemake@config$deseq2$threshold_pval
+if (is.null(threshold_pval) || is.na(threshold_pval)) threshold_pval <- 0.05
 threshold_log2fc <- snakemake@config$deseq2$threshold_log2fc
-
-dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+if (is.null(threshold_log2fc) || is.na(threshold_log2fc)) threshold_log2fc <- 1.0
 messages <- c()
 
 # import data
@@ -131,97 +128,6 @@ deseq_result <- deseq_result %>%
     significance = factor(significance, c("significant", "not significant"))
   )
 write_csv(deseq_result, file = deseq_results_file)
-
-
-# PLOTS
-#
-# PCA Plot
-# --------------------
-rlog_data <- rlog(deseq_data)
-pca_data <- plotPCA(vst(deseq_data, nsub = 100), intgroup = "condition", returnData = TRUE)
-
-pca_plot <- ggplot(
-  data = pca_data,
-  aes(x = PC1, y = PC2, color = condition, label = name)
-) +
-  geom_point(size = 3) +
-  geom_text_repel() +
-  theme_bw() +
-  labs(title = "PCA Plot") +
-  theme(
-    legend.title = element_blank(),
-    legend.position = "bottom",
-    aspect.ratio = 1
-  )
-
-ggsave(
-  filename = file.path(output_dir, "pca_plot.png"),
-  plot = pca_plot,
-  width = 8, height = 6
-)
-
-# Volcano Plot
-# --------------------
-volcano_plot <- ggplot(
-  data = deseq_result,
-  aes(x = log2FoldChange, y = -log10(padj))
-) +
-  geom_point(aes(color = significance), alpha = 0.6) +
-  theme_bw() +
-  labs(
-    title = "Volcano Plot",
-    subtitle = paste0("significance: p ≤ ", threshold_pval, ", log2FC ≥ ", threshold_log2fc),
-    x = "Log2 Fold Change",
-    y = "-log10 p-value"
-  ) +
-  lims(
-    x = {if (any(abs(range(deseq_result$log2FoldChange)) > 2)) {range(deseq_result$log2FoldChange)} else {c(-2, 2)}},
-    y = {if (max(-log10(deseq_result$padj)) > 3) {c(0, max(-log10(deseq_result$padj)))} else {c(0, 3)}}
-  ) +
-  theme(
-    legend.title = element_blank(),
-    legend.position = "bottom",
-    aspect.ratio = 1
-  ) +
-  facet_wrap(~ paste0(condition, " ~ ", reference))
-
-ggsave(
-  filename = file.path(output_dir, "volcano_plot.png"),
-  plot = volcano_plot,
-  width = 8, height = 6
-)
-
-# MA Plot
-# --------------------
-ma_plot <- ggplot(
-  data = deseq_result,
-  aes(x = baseMean, y = log2FoldChange)
-) +
-  geom_point(aes(color = significance), alpha = 0.6) +
-  theme_bw() +
-  labs(
-    title = "MA Plot",
-    subtitle = paste0("significance: p ≤ ", threshold_pval, ", log2FC ≥ ", threshold_log2fc),
-    x = "Mean Expression",
-    y = "Log2 Fold Change"
-  ) +
-  ylim({if (any(abs(range(deseq_result$log2FoldChange)) > 2)) {range(deseq_result$log2FoldChange)} else {c(-2, 2)}}) +
-  scale_x_continuous(
-    limits = {if (max(deseq_result$baseMean) > 10) {c(0.1, max(deseq_result$baseMean))} else {c(0.1, 10)}},
-    transform = "log10"
-  ) +
-  theme(
-    legend.title = element_blank(),
-    legend.position = "bottom",
-    aspect.ratio = 1
-  ) +
-  facet_wrap(~ paste0(condition, " ~ ", reference))
-
-ggsave(
-  filename = file.path(output_dir, "ma_plot.png"),
-  plot = ma_plot,
-  width = 8, height = 6
-)
 
 write_lines(
   file = snakemake@log[["path"]],

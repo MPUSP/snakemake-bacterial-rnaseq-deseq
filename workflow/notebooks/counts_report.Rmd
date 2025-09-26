@@ -1,0 +1,493 @@
+---
+title: "Report: RNA-Seq counts summary"
+author: "`r sessionInfo()$platform`"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+   rmd: "report.Rmd"
+output:
+  html_document:
+    theme: cosmo
+    toc: yes
+    toc_depth: 2
+    number_sections: yes
+    df_print: paged
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Background
+
+This report summarizes the results from the read counting step.
+It provides quality control plots and statistics for each condition and replicate.
+It is recommended to check this report when problems or questions about the DE analysis appear.
+
+# Requirements
+
+- loading libraries `tidyverse`, `grDevices`
+
+```{r, warning = FALSE}
+suppressPackageStartupMessages({
+    library(grDevices)
+    library(tidyverse)
+})
+```
+
+```{r, echo = FALSE}
+# messages
+messages <- c()
+
+figure_dir <- gsub("report.html$", "figures/", snakemake@output$html)
+if (!dir.exists(figure_dir)) {
+  dir.create(figure_dir)
+  messages <- append(messages, paste0("created figure dir: ", figure_dir))
+}
+
+# custom ggplot2 theme that is reused for all later plots
+custom_colors <- c(
+  "#E7298A", "#66A61E", "#E6AB02", "#7570B3",
+  "#B3B3B3", "#1B9E77", "#D95F02", "#A6761D"
+)
+
+custom_range <- function(n = 5, quantitative = FALSE) {
+  if (quantitative) {
+    colorRampPalette(custom_colors[c(5, 3, 4)])(n)
+  } else {
+    colorRampPalette(custom_colors)(n)
+  }
+}
+
+custom_theme <- function(
+    base_size = 12, base_line_size = 1.0,
+    base_rect_size = 1.0, ...) {
+  theme_light(
+    base_size = base_size,
+    base_line_size = base_line_size,
+    base_rect_size = base_rect_size
+  ) +
+    theme(
+      plot.margin = margin(10, 10, 10, 10),
+      title = element_text(colour = grey(0.4), size = 10),
+      plot.subtitle = element_text(colour = grey(0.4), size = 9),
+      axis.ticks.length = unit(0.2, "cm"),
+      axis.ticks = element_line(
+        colour = grey(0.4),
+        linetype = "solid", lineend = "round"
+      ),
+      axis.text.x = element_text(colour = grey(0.4), size = 10),
+      axis.text.y = element_text(colour = grey(0.4), size = 10),
+      panel.grid.major = element_line(
+        linewidth = 0.6,
+        linetype = "solid", colour = grey(0.9)
+      ),
+      panel.grid.minor = element_blank(),
+      panel.border = element_rect(
+        linetype = "solid",
+        colour = grey(0.4), fill = NA, linewidth = 1.0
+      ),
+      panel.background = element_blank(),
+      strip.background = element_blank(),
+      strip.text = element_text(
+        colour = grey(0.4), size =
+          10, margin = unit(rep(3, 4), "points")
+      ),
+      legend.text = element_text(colour = grey(0.4), size = 10),
+      legend.title = element_blank(),
+      legend.background = element_blank(),
+      ...
+    )
+}
+
+# set graphical parameter for subfigure labels
+list_fontpars <- list(face = "plain", size = 14)
+
+# function to export an image as svg and png
+save_plot <- function(
+    pl, path = figure_dir,
+    width = figwidth, height = figheight, index = NA) {
+  pl_name <- deparse(substitute(pl))
+  if (!is.na(index)) pl_name <- paste0(pl_name, "_", index)
+  svg(
+    filename = paste0(path, pl_name, ".svg"),
+    width = width, height = height
+  )
+  print(pl)
+  dev.off()
+  png(
+    filename = paste0(path, pl_name, ".png"),
+    width = width * 125, height = height * 125, res = 120
+  )
+  print(pl)
+  invisible(capture.output(dev.off()))
+}
+```
+
+# Sample overview
+
+## Data import
+
+- imported samplesheet `r snakemake@input[["samplesheet"]]`
+- imported raw counts file `r snakemake@input[["merged_counts"]]`
+- imported filtered counts file `r snakemake@input[["filtered_counts"]]`
+
+```{r}
+# table import
+samplesheet <- snakemake@input[["samplesheet"]]
+raw_counts <- snakemake@input[["merged_counts"]]
+filt_counts <- snakemake@input[["filtered_counts"]]
+
+df_samples <- read_tsv(samplesheet, show_col_types = FALSE)
+df_raw_counts <- read_csv(raw_counts, show_col_types = FALSE) %>%
+  pivot_longer(cols = -c(Geneid), names_to = "sample", values_to = "n_reads")
+df_filt_counts <- read_csv(filt_counts, show_col_types = FALSE) %>%
+  pivot_longer(cols = -c(Geneid), names_to = "sample", values_to = "n_reads")
+
+
+# list of samples + generic options
+figwidth <- 9
+figheight <- round(1 + (length(nrow(df_samples)) / 4))
+figheight2 <- 1.6 * figheight
+```
+
+## Samples
+
+- overview of samples
+- read metric are aggregated per gene/feature
+
+```{r}
+df_summary <- bind_rows(
+  list(raw = df_raw_counts, filtered = df_filt_counts),
+  .id = "type"
+) %>%
+  dplyr::group_by(type, sample) %>%
+  dplyr::summarize(
+    total_reads = sum(n_reads, na.rm = TRUE),
+    min_reads = min(n_reads, na.rm = TRUE),
+    mean_reads = mean(n_reads, na.rm = TRUE),
+    median_reads = median(n_reads, na.rm = TRUE),
+    max_reads = max(n_reads, na.rm = TRUE),
+  ) %>%
+  arrange(desc(type)) %>%
+  mutate(type = factor(type, c("filtered", "raw")))
+
+print(df_summary)
+```
+
+## QC metrics
+
+### Mapped reads per sample
+
+- figure shows the total number of mapped reads
+- reads are shown before and after filtering
+
+```{r, fig.width = figwidth, fig.height = figheight, warning = FALSE}
+plot_total_mapped_reads <- df_summary %>%
+    ggplot(aes(x = sample, y = total_reads, fill = type)) +
+    coord_flip() +
+    geom_col(alpha = 0.8, position = "identity") +
+    labs(x = "", y = "total number of mapped reads") +
+    custom_theme() +
+    scale_fill_manual(values = custom_colors[c(1, 5)])
+
+save_plot(plot_total_mapped_reads, width = figwidth, height = figheight)
+print(plot_total_mapped_reads)
+```
+
+### Mean reads per gene
+
+- figure shows the mean number of reads mapped per gene and sample
+
+```{r, fig.width = figwidth, fig.height = figheight, warning = FALSE}
+plot_mean_mapped_reads <- df_summary %>%
+    ggplot(aes(x = sample, y = mean_reads, fill = type)) +
+    coord_flip() +
+    geom_col(alpha = 0.8, position = "identity") +
+    labs(x = "", y = "mean number of mapped reads") +
+    custom_theme() +
+    scale_fill_manual(values = custom_colors[c(1, 5)])
+
+save_plot(plot_mean_mapped_reads, width = figwidth, height = figheight)
+print(plot_mean_mapped_reads)
+```
+
+### Max and min reads per gene
+
+- figure shows the maximum and minimum number of reads mapped per gene and sample
+- only filtered counts are shown
+
+```{r, fig.width = figwidth, fig.height = figheight, warning = FALSE}
+plot_min_max_reads <- df_summary %>%
+  filter(type == "filtered") %>%
+    ggplot(aes(x = sample)) +
+    geom_point(aes(y = min_reads), shape = 19, size = 2, color = custom_colors[1]) +
+    geom_point(aes(y = max_reads), shape = 19, size = 2, color = custom_colors[1]) +
+    geom_segment(aes(y = min_reads, yend = max_reads, xend = sample), color = custom_colors[1], linewidth = 1.0) +
+    coord_flip() +
+    labs(x = "", y = "mean number of mapped reads") +
+    custom_theme()
+
+save_plot(plot_min_max_reads, width = figwidth, height = figheight)
+print(plot_min_max_reads)
+```
+
+### Number of missing gene quantifications per sample
+
+- figure shows the number of missing genes per sample (zero reads)
+- only filtered counts are shown
+
+```{r, fig.width = figwidth, fig.height = figheight, warning = FALSE}
+plot_missing_quants <- df_filt_counts %>%
+  dplyr::group_by(sample) %>%
+  dplyr::summarize(`missing gene quantifications` = sum(n_reads == 0)) %>%
+  ggplot(aes(x = sample, y = `missing gene quantifications`)) +
+  geom_col(fill = custom_colors[1], alpha = 0.8) +
+  labs(x = "") +
+  coord_flip() +
+  custom_theme()
+
+save_plot(plot_missing_quants, width = figwidth, height = figheight)
+print(plot_missing_quants)
+```
+
+### Read count distribution, violin plot
+
+- figure shows the read count distribution per sample
+- genes without mapped reads for the respective sample are removed
+- read count is log 10 transformed (0 -> 1, 1 -> 10, 2 -> 100, ...)
+
+```{r, fig.width = figwidth, fig.height = figheight, warning = FALSE}
+plot_reads_per_gene_violin <- df_filt_counts %>%
+    ggplot(aes(x = log10(n_reads), y = sample)) +
+    geom_violin(fill = custom_colors[1], alpha = 0.8, color = NA) +
+    labs(y = "", x = expression("log"[10] * " reads per gene")) +
+    custom_theme()
+
+save_plot(plot_reads_per_gene_violin, width = figwidth, height = figheight)
+print(plot_reads_per_gene_violin)
+```
+
+### Read count distribution, histogram
+
+- figure shows the same data as above, only as histogram
+- genes without mapped reads for the respective sample are removed
+- read count is log 10 transformed (0 -> 1, 1 -> 10, 2 -> 100, ...)
+
+```{r, fig.width = figwidth, fig.height = figheight2, warning = FALSE}
+plot_reads_per_gene_hist <- df_filt_counts %>%
+    ggplot(aes(x = log10(n_reads))) +
+    geom_histogram(fill = custom_colors[1], alpha = 0.7, bins = 30) +
+    labs(y = "", x = expression("log"[10] * " reads per gene")) +
+    facet_wrap( ~ sample, ncol = 1) +
+    custom_theme()
+
+save_plot(plot_reads_per_gene_hist, width = figwidth, height = figheight2)
+print(plot_reads_per_gene_hist)
+```
+
+### Top 10 most abundant genes by read number
+
+- figure shows top 10 genes ranked by read count
+- only filtered counts are shown
+
+```{r, fig.width = figwidth, fig.height = figheight2, warning = FALSE}
+plot_top10_genes <- df_filt_counts %>%
+    dplyr::group_by(sample) %>%
+    dplyr::arrange(sample, desc(n_reads)) %>%
+    dplyr::mutate(rank = seq_along(Geneid)) %>%
+    dplyr::filter(between(rank, 1, 10)) %>%
+    ggplot(aes(x = factor(rank), y = n_reads)) +
+    geom_col(fill = custom_colors[1], alpha = 0.7, width = 1) +
+    labs(y = "n reads", x = "genes ranked by abundance") +
+    facet_wrap(~sample, ncol = 4) +
+    custom_theme()
+
+save_plot(plot_top10_genes, width = figwidth, height = figheight2)
+print(plot_top10_genes)
+```
+
+### Cumulative read count distribution
+
+- figure shows the gene diversity by plotting fraction of reads (%) vs fraction of genes (%)
+- the ideal experiment has high diversity and equal distribution of genes for similar samples
+- such a distribution would follow the diagonal dashed grey line
+- if read distribution (red line) is highly skewed, `% of reads` (y-axis) shows a steep ascent
+- this means very few genes contribute to almost all reads
+
+```{r, fig.width = figwidth, fig.height = figheight2, warning = FALSE}
+df_auc <- df_filt_counts %>%
+    dplyr::arrange(sample, desc(n_reads)) %>%
+    dplyr::group_by(sample) %>%
+    dplyr::mutate(
+        pc_genes = 100 * seq_along(n_reads) / n(),
+        pc_reads = 100 * n_reads / (sum(n_reads))
+    ) %>%
+    dplyr::mutate(pc_genes = round(pc_genes)) %>%
+    dplyr::group_by(sample, pc_genes) %>%
+    dplyr::summarize(pc_reads = sum(pc_reads), .groups = "drop_last") %>%
+    dplyr::mutate(pc_reads = cumsum(pc_reads))
+
+plot_cumulative_read_count <- df_auc %>%
+    ggplot(aes(x = pc_genes, y = pc_reads, group = sample)) +
+    geom_step(linewidth = 1.0, color = custom_colors[1]) +
+    geom_abline(
+        slope = 1, intercept = 0, linewidth = 1.0,
+        linetype = 2, color = grey(0.5)
+    ) +
+    lims(x = c(0, 100), y = c(0, 100)) +
+    labs(x = "% of genes", y = "% of reads") +
+    facet_wrap(~sample, ncol = 4) +
+    custom_theme()
+
+save_plot(plot_cumulative_read_count, width = figwidth, height = figheight2)
+print(plot_cumulative_read_count)
+```
+
+- this table shows the area under curve (AUC) for the line plot above
+- an AUC of 0.5 is ideal, an AUC approaching 1.0 is not optimal
+- the 'Gini index' is a score between 0 and 1 measuring population equality
+- it is defined as the `(AUC - AUC_optimal) / AUC_optimal`
+- a Gini score of 0 describes a perfectly equal, a Gini score of 1.0 a perfectly unequal distribution
+
+```{r, warning = FALSE}
+calc_auc <- function(x, y) {
+    sum(diff(x) * (head(y, -1) + tail(y, -1))) / 2
+}
+df_auc %>%
+    dplyr::summarize(
+        auc = calc_auc(pc_genes, pc_reads)/100^2,
+        auc_optimal = 0.5,
+        gini = (auc - 0.5) / 0.5
+    ) %>%
+    mutate(quality = case_when(
+        gini <= 0.33 ~ "low inequality (G < 0.33)",
+        gini > 0.33 & gini <= 0.66 ~ "intermediate inequality (0.33 < G < 0.66)",
+        gini > 0.66 ~ "high inequality (G > 0.66)"
+    ))
+```
+
+
+### Sample and replicate correlation coefficent (R)
+
+- figure shows heat map with correlation coefficient R (-1 < R < 1)
+- correlation coefficient shows how strongly read abundance is correlated
+
+```{r, fig.width = 7.5, fig.height = 7, warning = FALSE}
+df_correlation <- df_filt_counts %>%
+    tidyr::pivot_wider(names_from = "sample", values_from = "n_reads") %>%
+    dplyr::select(-Geneid) %>%
+    cor()
+
+plot_replicate_correlation <- df_correlation %>%
+    dplyr::as_tibble() %>%
+    dplyr::mutate(sample1 = colnames(.)) %>%
+    tidyr::pivot_longer(
+        cols = !sample1,
+        names_to = "sample2", values_to = "cor_coef"
+    ) %>%
+    ggplot(aes(x = sample1, y = sample2, fill = cor_coef)) +
+    geom_tile() +
+    geom_text(color = grey(0.4), aes(label = round(cor_coef, 2))) +
+    custom_theme() +
+    labs(title = "", x = "", y = "") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+    scale_fill_gradientn(
+        colours = c(custom_colors[1], grey(0.9), custom_colors[2]),
+        limits = c(-1, 1)
+    )
+
+write.csv(df_correlation, file = "correlation_table.csv")
+save_plot(plot_replicate_correlation, width = 7.5, height = 7)
+print(plot_replicate_correlation)
+```
+
+### Sample and replicate similarity with PCA
+
+- this figure shows sample similarity similar to above figure
+- uses principal component analysis (PCA) to reduce the multidimensional data to 3 main dimensions
+- plotted are principal component 1 (x-axis), 2 (y-axis) and 3 (point size)
+- replicates for similar conditions should cluster together
+- outliers should be easily visible
+
+```{r, fig.width = 7, fig.height = 7, warning = FALSE}
+pca_result <- df_filt_counts %>%
+    tidyr::pivot_wider(names_from = "sample", values_from = "n_reads") %>%
+    dplyr::select(-Geneid) %>%
+    as.matrix() %>%
+    t() %>%
+    replace(., is.na(.), 0) %>%
+    prcomp()
+
+df_PCA <- pca_result$x %>%
+    as_tibble(rownames = "sample") %>%
+    left_join(
+      dplyr::select(df_samples, condition, replicate, sample),
+      by = join_by(sample)
+    )
+
+plot_replicate_pca <- df_PCA %>%
+    ggplot(aes(x = PC1, y = PC2, size = PC3, color = condition, label = replicate)) +
+    geom_point(alpha = 0.8) +
+    geom_text(
+      size = 4, show.legend = FALSE, 
+      nudge_y = diff(range(df_PCA$PC2))/30,
+      nudge_x = diff(range(df_PCA$PC1))/30) +
+    labs(
+        title = "PCA, first three principal components",
+        subtitle = "Point size: PC3, color: condition, number: replicate.", x = "PC1", y = "PC2"
+    ) +
+    custom_theme(legend.position = "bottom", aspect.ratio = 1) +
+    scale_color_manual(values = colorRampPalette(custom_colors)(length(unique(df_PCA$condition))))
+
+save_plot(plot_replicate_pca, width = 7, height = 7)
+print(plot_replicate_pca)
+```
+
+# About this report
+
+## Workflow
+
+This report was automatically generated by the [snakemake-bacterial-rnaseq-deseq](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq) workflow.
+
+For issues, bugs, and feature requests please use the workflow's [github page](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/issues).
+
+For all other feedback, contact the author(s):
+
+- Michael Jahn, PhD: jahn@mpusp.mpg.de
+- Rina Ahmed-Begrich, PhD: begrich@mpusp.mpg.de
+
+The workflow is developed at the [Max Planck Unit for the Science of Pathogens](https://www.mpusp.mpg.de/), Berlin, Germany.
+
+## Configuration
+
+The pipeline configuration file is available at: `config/config.yml`.
+
+```{r, echo = FALSE}
+list_config <- read_lines("config/config.yml")
+list_config <- gsub("\"", "", list_config)
+print(list_config)
+```
+
+## Data accessability
+
+Input tables are listed at the top of the report.
+
+## Session Info
+
+Link to the R markdown source that was used to generate this report:
+
+<a download="report.Rmd" href="`r base64enc::dataURI(file = params$rmd, mime = 'text/rmd', encoding = 'base64')`">R Markdown source file</a>
+
+Session info (R base and package versions):
+
+```{r, echo = FALSE}
+sessionInfo()
+```
+
+```{r, echo = FALSE}
+messages <- append(messages, "finished writing HTML report successfully")
+write_lines(
+  paste0("HTML_REPORT: ", messages),
+  file = "results/deseq2/counts_report.log"
+)
+```
