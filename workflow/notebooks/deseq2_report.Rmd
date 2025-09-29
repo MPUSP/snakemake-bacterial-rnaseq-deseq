@@ -340,6 +340,7 @@ for (comp in comparisons) {
   cat("\n\n#### ", comp$condition, " - ", comp$comparison, " {-}\n\n")
   plot_ma <- df_deseq %>%
     filter(condition == comp$condition, reference == comp$comparison) %>%
+    mutate(gene = ifelse(significance == "significant", gene, "")) %>%
     ggplot(aes(x = baseMean, y = log2FoldChange, color = significance, label = gene)) +
     geom_point(alpha = 0.6, size = 1) +
     geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 10) +

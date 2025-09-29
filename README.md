@@ -36,7 +36,8 @@ To set up the pipeline, follow these steps:
 The pipeline requires the following input files when running it **together with the processing module**:
 
 - **`samplesheet.tsv`** – metadata for the RNA-Seq samples (e.g., condition, replicate)
-- **reference genome** and **`fastq.gz`** read files as explained in more detail on the [processing workflow README](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing#running-the-workflow)
+- **`fasta`** and **`gff`** genome annotation files (can be retrieved from NCBI)
+- **`fastq.gz`** read files as explained in more detail on the [processing workflow README](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing#running-the-workflow)
 
 The pipeline contains simulated paired-end `fastq.gz` read files for running automatic tests. These files were generated using `dwgsim` and extended with UMIs and adapters on the 3' end of read 2. The reads map to the recently updated _S. pyogenes_ SF370 reference genome ([`GCF_043231225.1`](https://doi.org/10.1128/mra.01197-24)). The script to simulate reads can be found in `.test/data/simulate_reads.sh`.
 
@@ -79,9 +80,10 @@ After successful execution, results will be available in the `results/deseq2/` d
 
 - `filtered_counts.csv` – Filtered counts for protein-coding genes.
 - `merged_counts.csv` – Merged counts from all samples.
-- `pca_plot.png` – PCA plot of the samples.
-- `volcano_plot.png` – Volcano plot for differential expression analysis.
-- `ma_plot.png` – MA plot for visualizing differential expression.
+- `deseq2_results.csv` – DESeq2 results for all comparisons.
+- `deseq2_report.html` – Comprehensive HTML report with visualizations and summaries.
+- `counts_report.html` – Comprehensive HTML report for counts data.
+- Various plots (PCA, heatmaps, MA plots, volcano plots) in PNG and SVG format.
 
 ## License
 
