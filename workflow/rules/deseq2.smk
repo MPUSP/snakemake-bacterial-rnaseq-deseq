@@ -23,6 +23,7 @@ rule deseq2_run:
         filtered_counts="results/deseq2/filtered_counts.csv",
     output:
         deseq_results="results/deseq2/deseq2_results.csv",
+        deseq_data="results/deseq2/deseq2_data.Rdata",
     log:
         path="results/deseq2/deseq2_run.log",
     conda:
@@ -46,3 +47,19 @@ rule counts_report:
     threads: int(workflow.cores * 0.25)
     script:
         "../notebooks/counts_report.Rmd"
+
+
+rule deseq2_report:
+    input:
+        deseq_data="results/deseq2/deseq2_data.Rdata",
+        deseq_results="results/deseq2/deseq2_results.csv",
+        samplesheet=config["samplesheet"],
+    output:
+        html="results/deseq2/deseq2_report.html",
+    log:
+        path="results/deseq2/deseq2_report.log",
+    conda:
+        "../envs/deseq2.yml"
+    threads: int(workflow.cores * 0.25)
+    script:
+        "../notebooks/deseq2_report.Rmd"

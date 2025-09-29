@@ -1,17 +1,20 @@
 # Load required libraries
-suppressPackageStartupMessages({
-  library(readr)
-  library(tibble)
-  library(dplyr)
-  library(tidyr)
-  library(DESeq2)
-  library(BiocParallel)
+suppressWarnings({
+  suppressPackageStartupMessages({
+    library(readr)
+    library(tibble)
+    library(dplyr)
+    library(tidyr)
+    library(DESeq2)
+    library(BiocParallel)
+  })
 })
 
 # parameters
 counts_file <- snakemake@input[["filtered_counts"]]
 samplesheet_file <- snakemake@input[["samplesheet"]]
 deseq_results_file <- snakemake@output[["deseq_results"]]
+deseq_data_file <- snakemake@output[["deseq_data"]]
 n_cores <- snakemake@threads
 threshold_pval <- snakemake@config$deseq2$threshold_pval
 if (is.null(threshold_pval) || is.na(threshold_pval)) threshold_pval <- 0.05
@@ -83,18 +86,19 @@ deseq_data <- DESeqDataSetFromMatrix(
   countData = df_counts[-1],
   colData = metadata,
   design = design
-)
+) %>%
+  DESeq()
 
 # call DESeq2's "results()" function with pairs of
 # contrasts `contrast("variable", "level1", "level2")`
 # it is assumed that the first condition is the reference
-deseq_data <- DESeq(deseq_data)
 if (n_conditions == 1) {
   deseq_result <- DESeq2::results(deseq_data) %>%
     as_tibble() %>%
     mutate(
       reference = "null",
-      condition = levels(metadata$condition)
+      condition = levels(metadata$condition),
+      gene = df_counts[[1]]
     )
 } else {
   deseq_result <- df_comparison %>%
@@ -109,13 +113,14 @@ if (n_conditions == 1) {
         as_tibble() %>%
         mutate(
           reference = comp$reference,
-          condition = comp$condition
+          condition = comp$condition,
+          gene = df_counts[[1]]
         )
     }) %>%
     bind_rows()
 }
 
-# slightly reformat df and export
+# slightly reformat df
 deseq_result <- deseq_result %>%
   relocate(reference, condition) %>%
   mutate(
@@ -124,9 +129,11 @@ deseq_result <- deseq_result %>%
       padj <= threshold_pval & log2FoldChange >= threshold_log2fc,
       "significant",
       "not significant"
-    ),
-    significance = factor(significance, c("significant", "not significant"))
+    )
   )
+
+# export relevant results
+save(deseq_data, file = deseq_data_file)
 write_csv(deseq_result, file = deseq_results_file)
 
 write_lines(
