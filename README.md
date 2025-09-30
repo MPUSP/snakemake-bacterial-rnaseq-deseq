@@ -78,8 +78,8 @@ To run the workflow from the command line, follow these steps:
 
 After successful execution, results will be available in the `results/deseq2/` directory, including:
 
-- `filtered_counts.csv` – Filtered counts for protein-coding genes.
-- `merged_counts.csv` – Merged counts from all samples.
+- `counts_merged.csv` – Merged counts from all samples.
+- `counts_protein_coding.csv` – Filtered counts for protein-coding genes.
 - `deseq2_results.csv` – DESeq2 results for all comparisons.
 - `deseq2_report.html` – Comprehensive HTML report with visualizations and summaries.
 - `counts_report.html` – Comprehensive HTML report for counts data.

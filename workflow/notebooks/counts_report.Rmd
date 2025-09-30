@@ -128,21 +128,22 @@ save_plot <- function(
 ## Data import
 
 - imported samplesheet `r snakemake@input[["samplesheet"]]`
-- imported raw counts file `r snakemake@input[["merged_counts"]]`
-- imported filtered counts file `r snakemake@input[["filtered_counts"]]`
+- imported table with all counts `r snakemake@input[["counts_merged"]]`
+- imported table only protein-coding features `r snakemake@input[["counts_protein_coding"]]`
 
 ```{r}
 # table import
 samplesheet <- snakemake@input[["samplesheet"]]
-raw_counts <- snakemake@input[["merged_counts"]]
-filt_counts <- snakemake@input[["filtered_counts"]]
+raw_counts <- snakemake@input[["counts_merged"]]
+filt_counts <- snakemake@input[["counts_protein_coding"]]
 
 df_samples <- read_tsv(samplesheet, show_col_types = FALSE)
 df_raw_counts <- read_csv(raw_counts, show_col_types = FALSE) %>%
-  pivot_longer(cols = -c(Geneid), names_to = "sample", values_to = "n_reads")
+  dplyr::select(-c(trivial_name, gene_biotype)) %>%
+  pivot_longer(cols = -c(locus_tag), names_to = "sample", values_to = "n_reads")
 df_filt_counts <- read_csv(filt_counts, show_col_types = FALSE) %>%
-  pivot_longer(cols = -c(Geneid), names_to = "sample", values_to = "n_reads")
-
+  dplyr::select(-c(trivial_name, gene_biotype)) %>%
+  pivot_longer(cols = -c(locus_tag), names_to = "sample", values_to = "n_reads")
 
 # list of samples + generic options
 figwidth <- 9
@@ -296,7 +297,7 @@ print(plot_reads_per_gene_hist)
 plot_top10_genes <- df_filt_counts %>%
   dplyr::group_by(sample) %>%
   dplyr::arrange(sample, desc(n_reads)) %>%
-  dplyr::mutate(rank = seq_along(Geneid)) %>%
+  dplyr::mutate(rank = seq_along(locus_tag)) %>%
   dplyr::filter(between(rank, 1, 10)) %>%
   ggplot(aes(x = factor(rank), y = n_reads)) +
   geom_col(fill = custom_colors[1], alpha = 0.7, width = 1) +
@@ -377,7 +378,7 @@ df_auc %>%
 ```{r, fig.width = 7.5, fig.height = 7, warning = FALSE}
 df_correlation <- df_filt_counts %>%
   tidyr::pivot_wider(names_from = "sample", values_from = "n_reads") %>%
-  dplyr::select(-Geneid) %>%
+  dplyr::select(-locus_tag) %>%
   cor()
 
 plot_replicate_correlation <- df_correlation %>%
@@ -418,7 +419,7 @@ print(plot_replicate_correlation)
 ```{r, fig.width = 7, fig.height = 7, warning = FALSE}
 pca_result <- df_filt_counts %>%
   tidyr::pivot_wider(names_from = "sample", values_from = "n_reads") %>%
-  dplyr::select(-Geneid) %>%
+  dplyr::select(-locus_tag) %>%
   as.matrix() %>%
   t() %>%
   replace(., is.na(.), 0) %>%

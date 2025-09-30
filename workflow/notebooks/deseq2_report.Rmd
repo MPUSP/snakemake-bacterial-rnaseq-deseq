@@ -262,8 +262,8 @@ for (comp in comparisons) {
   cat("\n\n#### ", comp$condition, " - ", comp$comparison, " {-}\n\n")
   plot_volcano <- df_deseq %>%
     filter(condition == comp$condition, reference == comp$comparison) %>%
-    mutate(gene = ifelse(significance == "significant", gene, "")) %>%
-    ggplot(aes(x = log2FoldChange, y = -log10(padj), color = significance, label = gene)) +
+    mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
+    ggplot(aes(x = log2FoldChange, y = -log10(padj), color = significance, label = trivial_name)) +
     geom_point(alpha = 0.6) +
     geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 10) +
     labs(
@@ -340,8 +340,8 @@ for (comp in comparisons) {
   cat("\n\n#### ", comp$condition, " - ", comp$comparison, " {-}\n\n")
   plot_ma <- df_deseq %>%
     filter(condition == comp$condition, reference == comp$comparison) %>%
-    mutate(gene = ifelse(significance == "significant", gene, "")) %>%
-    ggplot(aes(x = baseMean, y = log2FoldChange, color = significance, label = gene)) +
+    mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
+    ggplot(aes(x = baseMean, y = log2FoldChange, color = significance, label = trivial_name)) +
     geom_point(alpha = 0.6, size = 1) +
     geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 10) +
     labs(

@@ -11,10 +11,12 @@ suppressWarnings({
 })
 
 # parameters
-counts_file <- snakemake@input[["filtered_counts"]]
+counts_file <- snakemake@input[["counts_protein_coding"]]
 samplesheet_file <- snakemake@input[["samplesheet"]]
+genome_gff <- snakemake@input[["gff"]]
 deseq_results_file <- snakemake@output[["deseq_results"]]
 deseq_data_file <- snakemake@output[["deseq_data"]]
+design <- snakemake@config$deseq2$design
 n_cores <- snakemake@threads
 threshold_pval <- snakemake@config$deseq2$threshold_pval
 if (is.null(threshold_pval) || is.na(threshold_pval)) threshold_pval <- 0.05
@@ -24,60 +26,82 @@ messages <- c()
 
 # import data
 df_counts <- read_csv(counts_file, show_col_types = FALSE)
-df_sample <- read_table(samplesheet_file, show_col_types = FALSE)
+df_annotation <- df_counts[1:3]
+df_sample <- read_table(samplesheet_file, show_col_types = FALSE) %>%
+  mutate(replicate = as.character(replicate))
 
 metadata <- data.frame(
   condition = factor(df_sample$condition, unique(df_sample$condition)),
-  row.names = colnames(df_counts)[-1]
+  replicate = factor(df_sample$replicate, unique(df_sample$replicate)),
+  row.names = colnames(df_counts)[-c(1:3)]
 )
 
 # check that the order of file names corresponds to colnames of counts
-if (!all(colnames(df_counts[-1]) == df_sample$sample)) {
+if (!all(colnames(df_counts[-c(1:3)]) == df_sample$sample)) {
   messages <- append(messages, paste0(
     "Sample names of sample sheet and counts ",
     "matrix do not correspond, reordering."
   ))
-  df_counts <- df_counts[c("Geneid", df_sample$sample)]
+  df_counts <- df_counts[c("locus_tag", df_sample$sample)]
+} else {
+  df_counts <- df_counts[-c(2, 3)]
 }
 
-# decide about study design
+# check study design
 n_conditions <- length(levels(metadata$condition))
-if (n_conditions == 1) {
-  design <- formula(~1)
-  messages <- append(messages, paste0(
-    "found only one condition: ",
-    "using design '~ 1' (deviation from null)"
-  ))
-} else {
-  design <- formula(~condition)
-  messages <- append(messages, paste0(
-    "found ", n_conditions,
-    " conditions: using design '~ condition' (all vs all)"
-  ))
+n_replicates <- length(levels(metadata$replicate))
+for (fact in c("condition", "replicate")) {
+  if (grepl(fact, design) & get(paste0("n_", fact, "s")) <= 1) {
+    stop("found less than 2 ", fact, "s: can not use a design which contains '~ ", fact,"'.")
+  }
 }
 
-# define the comparisons to be made
-if (all(is.na(df_sample$comparison))) {
-  df_comparison <- df_sample %>%
-    mutate(reference = condition[1]) %>%
-    select(condition, reference) %>%
-    filter(condition != reference) %>%
-    distinct()
-  messages <- append(messages, paste0(
-    "making ", nrow(df_comparison),
-    " comparisons by constrasting the first condition against all others"
-  ))
+# define the comparisons for conditions
+if (grepl("condition", design)) {
+  if (all(is.na(df_sample$comparison))) {
+    df_comparison <- df_sample %>%
+      mutate(reference = condition[1]) %>%
+      select(condition, reference) %>%
+      filter(condition != reference) %>%
+      distinct() %>%
+      mutate(factor = "condition")
+    messages <- append(messages, paste0(
+      "making ", nrow(df_comparison),
+      " comparisons by contrasting the first condition against all others"
+    ))
+  } else {
+    df_comparison <- df_sample %>%
+      filter(!is.na(comparison)) %>%
+      dplyr::select(condition, comparison) %>%
+      distinct() %>%
+      tidyr::separate_longer_delim(comparison, delim = ",") %>%
+      dplyr::rename(reference = comparison) %>%
+      distinct() %>%
+      filter(!condition == reference) %>%
+      mutate(factor = "condition")
+    messages <- append(messages, paste0(
+      "making ", nrow(df_comparison), " comparisons as stated in the sample sheet"
+    ))
+  }
 } else {
-  df_comparison <- df_sample %>%
-    filter(!is.na(comparison)) %>%
-    dplyr::select(condition, comparison) %>%
-    distinct() %>%
-    tidyr::separate_longer_delim(comparison, delim = ",") %>%
-    dplyr::rename(reference = comparison) %>%
-    distinct() %>%
-    filter(!condition == reference)
+  df_comparison <- tibble()
+}
+
+# define the comparisons for replicates
+if (grepl("replicate", design)) {
+  df_comparison <- bind_rows(
+    df_comparison,
+    df_sample %>%
+      pull(replicate) %>%
+      tidyr::crossing(. , .) %>%
+      setNames(c("condition", "reference")) %>%
+      distinct() %>%
+      filter(!condition == reference) %>%
+      mutate(factor = "replicate")
+    )
   messages <- append(messages, paste0(
-    "making ", nrow(df_comparison), " comparisons as stated in the sample sheet"
+    "making ", nrow(filter(df_comparison, factor == "replicate")),
+    " comparisons by contrasting all replicates against each other"
   ))
 }
 
@@ -85,48 +109,38 @@ if (all(is.na(df_sample$comparison))) {
 deseq_data <- DESeqDataSetFromMatrix(
   countData = df_counts[-1],
   colData = metadata,
-  design = design
+  design = formula(design)
 ) %>%
   DESeq()
 
-# call DESeq2's "results()" function with pairs of
-# contrasts `contrast("variable", "level1", "level2")`
-# it is assumed that the first condition is the reference
-if (n_conditions == 1) {
-  deseq_result <- DESeq2::results(deseq_data) %>%
-    as_tibble() %>%
-    mutate(
-      reference = "null",
-      condition = levels(metadata$condition),
-      gene = df_counts[[1]]
-    )
-} else {
-  deseq_result <- df_comparison %>%
-    mutate(comparison = seq_along(reference)) %>%
-    group_by(comparison) %>%
-    group_split() %>%
-    lapply(function(comp) {
-      DESeq2::results(deseq_data,
-        contrast = c("condition", comp$condition, comp$reference),
-        parallel = TRUE, BPPARAM = MulticoreParam(n_cores)
-      ) %>%
-        as_tibble() %>%
-        mutate(
-          reference = comp$reference,
-          condition = comp$condition,
-          gene = df_counts[[1]]
-        )
-    }) %>%
-    bind_rows()
-}
+# call DESeq2's `results()` function with pairs of
+# contrasts like `contrast("variable", "level1", "level2")`
+deseq_result <- df_comparison %>%
+  group_by(factor, condition, reference) %>%
+  group_split() %>%
+  lapply(function(comp) {
+    DESeq2::results(deseq_data,
+      contrast = c(comp$factor, comp$condition, comp$reference),
+      parallel = TRUE, BPPARAM = MulticoreParam(n_cores)
+    ) %>%
+      as_tibble() %>%
+      mutate(
+        factor = comp$factor,
+        reference = comp$reference,
+        condition = comp$condition,
+        locus_tag = df_counts[[1]]
+      )
+  }) %>%
+  bind_rows()
 
 # slightly reformat df
 deseq_result <- deseq_result %>%
-  relocate(reference, condition) %>%
+  left_join(df_annotation, by = join_by("locus_tag")) %>%
+  relocate(factor, reference, condition, locus_tag, trivial_name, gene_biotype) %>%
   mutate(
     padj = replace(padj, is.na(padj), 1),
     significance = ifelse(
-      padj <= threshold_pval & log2FoldChange >= threshold_log2fc,
+      padj <= threshold_pval & abs(log2FoldChange) >= threshold_log2fc,
       "significant",
       "not significant"
     )

@@ -7,8 +7,8 @@ rule deseq2_init:
         gff="results/extracted_features/biotypes.gff",
         samplesheet=config["samplesheet"],
     output:
-        filtered_counts="results/deseq2/filtered_counts.csv",
-        merged_counts="results/deseq2/merged_counts.csv",
+        counts_merged="results/deseq2/counts_merged.csv",
+        counts_protein_coding="results/deseq2/counts_protein_coding.csv",
     log:
         path="results/deseq2/deseq2_init.log",
     conda:
@@ -20,7 +20,7 @@ rule deseq2_init:
 rule deseq2_run:
     input:
         samplesheet=config["samplesheet"],
-        filtered_counts="results/deseq2/filtered_counts.csv",
+        counts_protein_coding=rules.deseq2_init.output.counts_protein_coding,
     output:
         deseq_results="results/deseq2/deseq2_results.csv",
         deseq_data="results/deseq2/deseq2_data.Rdata",
@@ -35,8 +35,8 @@ rule deseq2_run:
 
 rule counts_report:
     input:
-        filtered_counts=rules.deseq2_init.output.filtered_counts,
-        merged_counts=rules.deseq2_init.output.merged_counts,
+        counts_merged=rules.deseq2_init.output.counts_merged,
+        counts_protein_coding=rules.deseq2_init.output.counts_protein_coding,
         samplesheet=config["samplesheet"],
     output:
         html="results/deseq2/counts_report.html",
