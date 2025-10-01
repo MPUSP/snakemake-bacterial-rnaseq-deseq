@@ -172,11 +172,17 @@ df_samples
 - note: redundant comparisons like A vs B and B vs A are not filtered, it can be meaningful to look at differences from both sides
 
 ```{r}
-df_comparisons <- df_samples %>%
+df_comparison <- df_samples %>%
+  filter(!is.na(reference)) %>%
+  dplyr::select(condition, reference) %>%
+  distinct() %>%
+  tidyr::separate_longer_delim(reference, delim = ",") %>%
+  distinct() %>%
+  filter(!condition == reference) %>%
   group_by(condition, reference) %>%
   dplyr::summarize(`number of replicates` = n(), .groups = "drop")
 
-df_comparisons
+df_comparison
 ```
 
 ### Principal component analysis (PCA)
@@ -215,9 +221,11 @@ print(plot_pca)
 - shows all genes as dots
 - x-axis: log2 fold change (DESeq2 column `log2FoldChange`)
 - y-axis: -log10 adjusted p-value (DESeq2 column `padj`)
+- the order of comparisons is *condition* ~ *reference*
+- for example `log2FC = 1` means that condition is twice as high as reference
 
 ```{r}
-comparisons <- df_comparisons %>%
+comparisons <- df_comparison %>%
   group_by(condition, reference) %>%
   group_split()
 
@@ -262,7 +270,7 @@ volcano_plot <- function(df) {
       legend.position = "bottom",
       aspect.ratio = 1
     ) +
-    facet_wrap(~ paste0(condition, " ~ ", reference), ncol = 4) +
+    facet_wrap(~ paste0(condition, " ~ ", reference)) +
     custom_theme(legend.position = "bottom", aspect.ratio = 1) +
     scale_color_manual(values = custom_colors[c(1, 5)])
 }
@@ -305,6 +313,8 @@ for (comp in comparisons) {
 - shows all genes as dots
 - x-axis: log2 fold change (DESeq2 column `log2FoldChange`)
 - y-axis: -log10 adjusted p-value (DESeq2 column `padj`)
+- the order of comparisons is *condition* ~ *reference*
+- for example `log2FC = 1` means that condition is twice as high as reference
 
 **OVERVIEW REPLICATES**
 
@@ -371,7 +381,7 @@ ma_plot <- function(df) {
       legend.position = "bottom",
       aspect.ratio = 1
     ) +
-    facet_wrap(~ paste0(condition, " ~ ", reference), ncol = 4) +
+    facet_wrap(~ paste0(condition, " ~ ", reference)) +
     custom_theme(legend.position = "bottom", aspect.ratio = 1) +
     scale_color_manual(values = custom_colors[c(1, 5)])
 }
