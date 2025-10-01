@@ -179,11 +179,11 @@ df_comparisons <- df_samples %>%
 df_comparisons
 ```
 
-### PCA (using `baseMean` from DESeq2)
+### Principal component analysis (PCA)
 
 - this figure shows sample similarity between conditions
-- replicate information is not part of this analysis as it is already aggregated by `DESeq2`
-- uses principal component analysis (PCA) to reduce the multidimensional data to 3 main dimensions
+- PCA reduces the multidimensional data to 3 main dimensions
+- based on the `baseMean` information from DESeq2
 - plotted are principal component 1 (x-axis), 2 (y-axis) and 3 (point size)
 - similar conditions should cluster together
 - outliers should be easily visible
@@ -210,79 +210,87 @@ save_plot(plot_pca, width = 7, height = 7)
 print(plot_pca)
 ```
 
-### One-by-one comparison, Volcano plot {.tabset}
+### Volcano plot, conditions {.tabset}
 
 - shows all genes as dots
 - x-axis: log2 fold change (DESeq2 column `log2FoldChange`)
 - y-axis: -log10 adjusted p-value (DESeq2 column `padj`)
 
----
-
-**Overview figure**
-
-```{r, fig.width = 8, fig.height = 8}
-plot_volcano_overview <- ggplot(
-  data = df_deseq,
-  aes(x = log2FoldChange, y = -log10(padj))
-) +
-  geom_point(aes(color = significance), alpha = 0.6, size = 1) +
-  labs(
-    title = "Volcano Plot",
-    subtitle = paste0("significance: p ≤ ", threshold_pval, ", log2FC ≥ ", threshold_log2fc),
-    x = "Log2 Fold Change",
-    y = "-log10 p-value"
-  ) +
-  lims(
-    x = {if (any(abs(range(df_deseq$log2FoldChange)) > 2)) {range(df_deseq$log2FoldChange)} else {c(-2, 2)}},
-    y = {if (max(-log10(df_deseq$padj)) > 3) {c(0, max(-log10(df_deseq$padj)))} else {c(0, 3)}}
-  ) +
-  theme(
-    legend.title = element_blank(),
-    legend.position = "bottom",
-    aspect.ratio = 1
-  ) +
-  facet_wrap(~ paste0(condition, " ~ ", reference), ncol = 4) +
-  custom_theme(legend.position = "bottom", aspect.ratio = 1) +
-  scale_color_manual(values = custom_colors[c(1, 5)])
-
-save_plot(plot_volcano_overview, width = 8, height = 8)
-print(plot_volcano_overview)
-```
-
----
-
-**One-by-one comparison**
-
-```{r, results = 'asis', fig.width = 8, fig.height = 8}
+```{r}
 comparisons <- df_comparisons %>%
   group_by(condition, comparison) %>%
   group_split()
 
-for (comp in comparisons) {
-  cat("\n\n#### ", comp$condition, " - ", comp$comparison, " {-}\n\n")
-  plot_volcano <- df_deseq %>%
-    filter(condition == comp$condition, reference == comp$comparison) %>%
-    mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
-    ggplot(aes(x = log2FoldChange, y = -log10(padj), color = significance, label = trivial_name)) +
-    geom_point(alpha = 0.6) +
+replicates <- df_samples %>%
+  pull(replicate) %>%
+  unique() %>%
+  tidyr::crossing(. , .) %>%
+  setNames(c("condition", "comparison")) %>%
+  distinct() %>%
+  filter(!condition == comparison) %>%
+  group_by(condition, comparison) %>%
+  group_split()
+
+get_limit_fc <- function(df) {
+  if (any(abs(range(df$log2FoldChange)) > 2)) {range(df$log2FoldChange)} else {c(-2, 2)}
+}
+
+get_limit_pv <- function(df) {
+  if (max(-log10(df$padj)) > 3) {c(0, max(-log10(df$padj)))} else {c(0, 3)}
+}
+
+get_limit_bm <- function(df) {
+  if (max(df$baseMean) > 10) {c(0.1, max(df$baseMean))} else {c(0.1, 10)}
+}
+
+volcano_plot <- function(df) {
+  ggplot(df, aes(x = log2FoldChange, y = -log10(padj), color = significance, label = trivial_name)) +
+    geom_point(alpha = 0.6, size = 1) +
     geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 10) +
     labs(
-      title = paste0("Volcano Plot: ", comp$condition, " - ", comp$comparison),
+      title = "Volcano Plot",
       subtitle = paste0("significance: p ≤ ", threshold_pval, ", log2FC ≥ ", threshold_log2fc),
       x = "Log2 Fold Change",
       y = "-log10 p-value"
     ) +
     lims(
-      x = {if (any(abs(range(df_deseq$log2FoldChange)) > 2)) {range(df_deseq$log2FoldChange)} else {c(-2, 2)}},
-      y = {if (max(-log10(df_deseq$padj)) > 3) {c(0, max(-log10(df_deseq$padj)))} else {c(0, 3)}}
+      x = get_limit_fc(filter(df_deseq, factor == unique(df$factor))),
+      y = get_limit_pv(filter(df_deseq, factor == unique(df$factor)))
     ) +
     theme(
       legend.title = element_blank(),
       legend.position = "bottom",
       aspect.ratio = 1
     ) +
+    facet_wrap(~ paste0(condition, " ~ ", reference), ncol = 4) +
     custom_theme(legend.position = "bottom", aspect.ratio = 1) +
     scale_color_manual(values = custom_colors[c(1, 5)])
+}
+```
+
+**OVERVIEW CONDITIONS**
+
+```{r, fig.width = 8, fig.height = 8}
+plot_volcano_overview <- df_deseq %>%
+  filter(factor == "condition") %>%
+  mutate(trivial_name = "") %>%
+  volcano_plot()
+
+print(plot_volcano_overview)
+save_plot(plot_volcano_overview, width = 8, height = 8)
+```
+
+---
+
+**ONE-BY-ONE COMPARISON, CONDITIONS**
+
+```{r, results = 'asis', fig.width = 8, fig.height = 8}
+for (comp in comparisons) {
+  cat("\n\n#### ", comp$condition, " - ", comp$comparison, " {-}\n\n")
+  plot_volcano <- df_deseq %>%
+    filter(condition == comp$condition, reference == comp$comparison) %>%
+    mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
+    volcano_plot()
 
   print(plot_volcano)
   save_plot(
@@ -292,7 +300,45 @@ for (comp in comparisons) {
 }
 ```
 
-### One-by-one comparison, MA pLot  {.tabset}
+### Volcano plot, replicates {.tabset}
+
+- shows all genes as dots
+- x-axis: log2 fold change (DESeq2 column `log2FoldChange`)
+- y-axis: -log10 adjusted p-value (DESeq2 column `padj`)
+
+**OVERVIEW REPLICATES**
+
+```{r, fig.width = 8, fig.height = 8}
+plot_volcano_overview_rep <- df_deseq %>%
+  filter(factor == "replicate") %>%
+  mutate(trivial_name = "") %>%
+  volcano_plot()
+
+print(plot_volcano_overview_rep)
+save_plot(plot_volcano_overview_rep, width = 8, height = 8)
+```
+
+---
+
+**ONE-BY-ONE COMPARISON, REPLICATES**
+
+```{r, results = 'asis', fig.width = 8, fig.height = 8}
+for (comp in replicates) {
+  cat("\n\n#### ", comp$condition, " - ", comp$comparison, " {-}\n\n")
+  plot_volcano <- df_deseq %>%
+    filter(condition == comp$condition, reference == comp$comparison) %>%
+    mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
+    volcano_plot()
+
+  print(plot_volcano)
+  save_plot(
+    plot_volcano, width = 8, height = 8,
+    index = paste0(comp$condition, "_vs_", comp$comparison)
+  )
+}
+```
+
+### MA pLot, conditions {.tabset}
 
 - shows all genes as dots
 - x-axis: mean expression across all samples (DESeq2 column `baseMean`)
@@ -301,58 +347,23 @@ for (comp in comparisons) {
   - points high y-values are probably differentially expressed
   - points with low x-values have low expression and are less reliable
 
-**Overview figure**
-
-```{r, fig.width = 8, fig.height = 8}
-plot_ma_overview <- ggplot(
-  data = df_deseq,
-  aes(x = baseMean, y = log2FoldChange)
-) +
-  geom_point(aes(color = significance), alpha = 0.6, size = 1) +
-  labs(
-    title = "MA Plot",
-    subtitle = paste0("significance: p ≤ ", threshold_pval, ", log2FC ≥ ", threshold_log2fc),
-    x = "Mean Expression",
-    y = "Log2 Fold Change"
-  ) +
-  ylim({if (any(abs(range(df_deseq$log2FoldChange)) > 2)) {range(df_deseq$log2FoldChange)} else {c(-2, 2)}}) +
-  scale_x_continuous(
-    limits = {if (max(df_deseq$baseMean) > 10) {c(0.1, max(df_deseq$baseMean))} else {c(0.1, 10)}},
-    transform = "log10"
-  ) +
-  theme(
-    legend.title = element_blank(),
-    legend.position = "bottom",
-    aspect.ratio = 1
-  ) +
-  facet_wrap(~ paste0(condition, " ~ ", reference), ncol = 4) +
-  custom_theme(legend.position = "bottom", aspect.ratio = 1) +
-  scale_color_manual(values = custom_colors[c(1, 5)])
-
-save_plot(plot_ma_overview, width = 8, height = 8)
-print(plot_ma_overview)
-```
-
-**One-by-one comparison**
-
-```{r, results = 'asis', fig.width = 8, fig.height = 8}
-for (comp in comparisons) {
-  cat("\n\n#### ", comp$condition, " - ", comp$comparison, " {-}\n\n")
-  plot_ma <- df_deseq %>%
-    filter(condition == comp$condition, reference == comp$comparison) %>%
-    mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
-    ggplot(aes(x = baseMean, y = log2FoldChange, color = significance, label = trivial_name)) +
+```{r}
+ma_plot <- function(df) {
+  ggplot(df, aes(x = baseMean, y = log2FoldChange, color = significance, label = trivial_name)) +
     geom_point(alpha = 0.6, size = 1) +
     geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 10) +
     labs(
-      title = paste0("Volcano Plot: ", comp$condition, " - ", comp$comparison),
+      title = "MA Plot",
       subtitle = paste0("significance: p ≤ ", threshold_pval, ", log2FC ≥ ", threshold_log2fc),
       x = "Mean Expression",
       y = "Log2 Fold Change"
     ) +
-    ylim({if (any(abs(range(df_deseq$log2FoldChange)) > 2)) {range(df_deseq$log2FoldChange)} else {c(-2, 2)}}) +
+    lims(
+      x = get_limit_bm(filter(df_deseq, factor == unique(df$factor))),
+      y = get_limit_fc(filter(df_deseq, factor == unique(df$factor)))
+    ) +
     scale_x_continuous(
-      limits = {if (max(df_deseq$baseMean) > 10) {c(0.1, max(df_deseq$baseMean))} else {c(0.1, 10)}},
+      # limits = NULL,
       transform = "log10"
     ) +
     theme(
@@ -360,8 +371,76 @@ for (comp in comparisons) {
       legend.position = "bottom",
       aspect.ratio = 1
     ) +
+    facet_wrap(~ paste0(condition, " ~ ", reference), ncol = 4) +
     custom_theme(legend.position = "bottom", aspect.ratio = 1) +
     scale_color_manual(values = custom_colors[c(1, 5)])
+}
+```
+
+**OVERVIEW CONDITIONS**
+
+```{r, fig.width = 8, fig.height = 8}
+plot_ma_overview <- df_deseq %>%
+  filter(factor == "condition") %>%
+  mutate(trivial_name = "") %>%
+  ma_plot()
+
+print(plot_ma_overview)
+save_plot(plot_ma_overview, width = 8, height = 8)
+```
+
+---
+
+**ONE-BY-ONE COMPARISON, CONDITIONS**
+
+```{r, results = 'asis', fig.width = 8, fig.height = 8}
+for (comp in comparisons) {
+  cat("\n\n#### ", comp$condition, " - ", comp$comparison, " {-}\n\n")
+  plot_ma <- df_deseq %>%
+    filter(condition == comp$condition, reference == comp$comparison) %>%
+    mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
+    ma_plot()
+
+  print(plot_ma)
+  save_plot(
+    plot_ma, width = 8, height = 8,
+    index = paste0(comp$condition, "_vs_", comp$comparison)
+  )
+}
+```
+
+### MA plot, replicates {.tabset}
+
+- shows all genes as dots
+- x-axis: mean expression across all samples (DESeq2 column `baseMean`)
+- y-axis: log2 fold change (DESeq2 column `log2FoldChange`)
+- how the MA plot is interpreted: 
+  - points high y-values are probably differentially expressed
+  - points with low x-values have low expression and are less reliable
+
+**OVERVIEW REPLICATES**
+
+```{r, fig.width = 8, fig.height = 8}
+plot_ma_overview_rep <- df_deseq %>%
+  filter(factor == "replicate") %>%
+  mutate(trivial_name = "") %>%
+  ma_plot()
+
+print(plot_ma_overview_rep)
+save_plot(plot_ma_overview_rep, width = 8, height = 8)
+```
+
+---
+
+**ONE-BY-ONE COMPARISON, REPLICATES**
+
+```{r, results = 'asis', fig.width = 8, fig.height = 8}
+for (comp in replicates) {
+  cat("\n\n#### ", comp$condition, " - ", comp$comparison, " {-}\n\n")
+  plot_ma <- df_deseq %>%
+    filter(condition == comp$condition, reference == comp$comparison) %>%
+    mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
+    ma_plot()
 
   print(plot_ma)
   save_plot(
