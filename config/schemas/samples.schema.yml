@@ -23,7 +23,7 @@ properties:
   fq_umi:
     type: string
     description: names of fastq files, UMI (optional)
-  comparison:
+  reference:
     type: [string, "null", "na"]
     description: names of fastq files, UMI (optional)
 
@@ -33,4 +33,4 @@ required:
   - replicate
   - experiment
   - fq1
-  - comparison
+  - reference

@@ -58,7 +58,7 @@ for (fact in c("condition", "replicate")) {
 
 # define the comparisons for conditions
 if (grepl("condition", design)) {
-  if (all(is.na(df_sample$comparison))) {
+  if (all(is.na(df_sample$reference))) {
     df_comparison <- df_sample %>%
       mutate(reference = condition[1]) %>%
       select(condition, reference) %>%
@@ -71,11 +71,10 @@ if (grepl("condition", design)) {
     ))
   } else {
     df_comparison <- df_sample %>%
-      filter(!is.na(comparison)) %>%
-      dplyr::select(condition, comparison) %>%
+      filter(!is.na(reference)) %>%
+      dplyr::select(condition, reference) %>%
       distinct() %>%
-      tidyr::separate_longer_delim(comparison, delim = ",") %>%
-      dplyr::rename(reference = comparison) %>%
+      tidyr::separate_longer_delim(reference, delim = ",") %>%
       distinct() %>%
       filter(!condition == reference) %>%
       mutate(factor = "condition")

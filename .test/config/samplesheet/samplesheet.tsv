@@ -1,4 +1,4 @@
-sample	condition	replicate	experiment	fq1	fq2	fq_umi	comparison
+sample	condition	replicate	experiment	fq1	fq2	fq_umi	reference
 control_S1	control	1	rnaseq_mpusp_custom	data/rnaseq_sim/control_S1_R1.fastq.gz	data/rnaseq_sim/control_S1_R2.fastq.gz	-	treatment
 control_S2	control	2	rnaseq_mpusp_custom	data/rnaseq_sim/control_S2_R1.fastq.gz	data/rnaseq_sim/control_S2_R2.fastq.gz	-	treatment
 treatment_S1	treatment	1	rnaseq_mpusp_custom	data/rnaseq_sim/treatment_S1_R1.fastq.gz	data/rnaseq_sim/treatment_S1_R2.fastq.gz	-	control

@@ -167,13 +167,13 @@ df_samples
 
 ### User-defined comparisons
 
-- comparisons are defined in the sample sheet using the `comparison` column
+- comparisons are defined in the sample sheet using the `reference` column
 - each condition will be contrasted against all listed reference conditions in this column
 - note: redundant comparisons like A vs B and B vs A are not filtered, it can be meaningful to look at differences from both sides
 
 ```{r}
 df_comparisons <- df_samples %>%
-  group_by(condition, comparison) %>%
+  group_by(condition, reference) %>%
   dplyr::summarize(`number of replicates` = n(), .groups = "drop")
 
 df_comparisons
@@ -218,17 +218,17 @@ print(plot_pca)
 
 ```{r}
 comparisons <- df_comparisons %>%
-  group_by(condition, comparison) %>%
+  group_by(condition, reference) %>%
   group_split()
 
 replicates <- df_samples %>%
   pull(replicate) %>%
   unique() %>%
   tidyr::crossing(. , .) %>%
-  setNames(c("condition", "comparison")) %>%
+  setNames(c("condition", "reference")) %>%
   distinct() %>%
-  filter(!condition == comparison) %>%
-  group_by(condition, comparison) %>%
+  filter(!condition == reference) %>%
+  group_by(condition, reference) %>%
   group_split()
 
 get_limit_fc <- function(df) {
@@ -286,16 +286,16 @@ save_plot(plot_volcano_overview, width = 8, height = 8)
 
 ```{r, results = 'asis', fig.width = 8, fig.height = 8}
 for (comp in comparisons) {
-  cat("\n\n#### ", comp$condition, " - ", comp$comparison, " {-}\n\n")
+  cat("\n\n#### ", comp$condition, " - ", comp$reference, " {-}\n\n")
   plot_volcano <- df_deseq %>%
-    filter(condition == comp$condition, reference == comp$comparison) %>%
+    filter(condition == comp$condition, reference == comp$reference) %>%
     mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
     volcano_plot()
 
   print(plot_volcano)
   save_plot(
     plot_volcano, width = 8, height = 8,
-    index = paste0(comp$condition, "_vs_", comp$comparison)
+    index = paste0(comp$condition, "_vs_", comp$reference)
   )
 }
 ```
@@ -324,16 +324,16 @@ save_plot(plot_volcano_overview_rep, width = 8, height = 8)
 
 ```{r, results = 'asis', fig.width = 8, fig.height = 8}
 for (comp in replicates) {
-  cat("\n\n#### ", comp$condition, " - ", comp$comparison, " {-}\n\n")
+  cat("\n\n#### ", comp$condition, " - ", comp$reference, " {-}\n\n")
   plot_volcano <- df_deseq %>%
-    filter(condition == comp$condition, reference == comp$comparison) %>%
+    filter(condition == comp$condition, reference == comp$reference) %>%
     mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
     volcano_plot()
 
   print(plot_volcano)
   save_plot(
     plot_volcano, width = 8, height = 8,
-    index = paste0(comp$condition, "_vs_", comp$comparison)
+    index = paste0(comp$condition, "_vs_", comp$reference)
   )
 }
 ```
@@ -395,16 +395,16 @@ save_plot(plot_ma_overview, width = 8, height = 8)
 
 ```{r, results = 'asis', fig.width = 8, fig.height = 8}
 for (comp in comparisons) {
-  cat("\n\n#### ", comp$condition, " - ", comp$comparison, " {-}\n\n")
+  cat("\n\n#### ", comp$condition, " - ", comp$reference, " {-}\n\n")
   plot_ma <- df_deseq %>%
-    filter(condition == comp$condition, reference == comp$comparison) %>%
+    filter(condition == comp$condition, reference == comp$reference) %>%
     mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
     ma_plot()
 
   print(plot_ma)
   save_plot(
     plot_ma, width = 8, height = 8,
-    index = paste0(comp$condition, "_vs_", comp$comparison)
+    index = paste0(comp$condition, "_vs_", comp$reference)
   )
 }
 ```
@@ -436,16 +436,16 @@ save_plot(plot_ma_overview_rep, width = 8, height = 8)
 
 ```{r, results = 'asis', fig.width = 8, fig.height = 8}
 for (comp in replicates) {
-  cat("\n\n#### ", comp$condition, " - ", comp$comparison, " {-}\n\n")
+  cat("\n\n#### ", comp$condition, " - ", comp$reference, " {-}\n\n")
   plot_ma <- df_deseq %>%
-    filter(condition == comp$condition, reference == comp$comparison) %>%
+    filter(condition == comp$condition, reference == comp$reference) %>%
     mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
     ma_plot()
 
   print(plot_ma)
   save_plot(
     plot_ma, width = 8, height = 8,
-    index = paste0(comp$condition, "_vs_", comp$comparison)
+    index = paste0(comp$condition, "_vs_", comp$reference)
   )
 }
 ```
