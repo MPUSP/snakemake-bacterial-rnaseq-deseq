@@ -129,7 +129,7 @@ save_plot <- function(
 
 - imported samplesheet `r snakemake@input[["samplesheet"]]`
 - imported table with all counts `r snakemake@input[["counts_merged"]]`
-- imported table only protein-coding features `r snakemake@input[["counts_protein_coding"]]`
+- imported table with only protein-coding features `r snakemake@input[["counts_protein_coding"]]`
 
 ```{r}
 # table import
@@ -137,12 +137,13 @@ samplesheet <- snakemake@input[["samplesheet"]]
 raw_counts <- snakemake@input[["counts_merged"]]
 filt_counts <- snakemake@input[["counts_protein_coding"]]
 
+annot_cols <- c("old_locus_tag", "trivial_name", "gene_biotype")
 df_samples <- read_tsv(samplesheet, show_col_types = FALSE)
 df_raw_counts <- read_csv(raw_counts, show_col_types = FALSE) %>%
-  dplyr::select(-c(trivial_name, gene_biotype)) %>%
+  dplyr::select(-any_of(annot_cols)) %>%
   pivot_longer(cols = -c(locus_tag), names_to = "sample", values_to = "n_reads")
 df_filt_counts <- read_csv(filt_counts, show_col_types = FALSE) %>%
-  dplyr::select(-c(trivial_name, gene_biotype)) %>%
+  dplyr::select(-any_of(annot_cols)) %>%
   pivot_longer(cols = -c(locus_tag), names_to = "sample", values_to = "n_reads")
 
 # list of samples + generic options

@@ -26,26 +26,25 @@ messages <- c()
 
 # import data
 df_counts <- read_csv(counts_file, show_col_types = FALSE)
-df_annotation <- df_counts[1:3]
+annot_cols <- intersect(c("locus_tag", "old_locus_tag", "trivial_name", "gene_biotype"), colnames(df_counts))
+df_annotation <- dplyr::select(df_counts, all_of(annot_cols))
 df_sample <- read_table(samplesheet_file, show_col_types = FALSE) %>%
   mutate(replicate = as.character(replicate))
 
 metadata <- data.frame(
   condition = factor(df_sample$condition, unique(df_sample$condition)),
   replicate = factor(df_sample$replicate, unique(df_sample$replicate)),
-  row.names = colnames(df_counts)[-c(1:3)]
+  row.names = setdiff(colnames(df_counts), annot_cols)
 )
 
 # check that the order of file names corresponds to colnames of counts
-if (!all(colnames(df_counts[-c(1:3)]) == df_sample$sample)) {
+if (!all(colnames(dplyr::select(df_counts, -any_of(annot_cols))) == df_sample$sample)) {
   messages <- append(messages, paste0(
     "Sample names of sample sheet and counts ",
     "matrix do not correspond, reordering."
   ))
-  df_counts <- df_counts[c("locus_tag", df_sample$sample)]
-} else {
-  df_counts <- df_counts[-c(2, 3)]
 }
+df_counts <- df_counts[c("locus_tag", df_sample$sample)]
 
 # check study design
 n_conditions <- length(levels(metadata$condition))
@@ -135,7 +134,7 @@ deseq_result <- df_comparison %>%
 # slightly reformat df
 deseq_result <- deseq_result %>%
   left_join(df_annotation, by = join_by("locus_tag")) %>%
-  relocate(factor, reference, condition, locus_tag, trivial_name, gene_biotype) %>%
+  dplyr::select(all_of(c("factor", "reference", "condition", annot_cols)), everything()) %>%
   mutate(
     padj = replace(padj, is.na(padj), 1),
     significance = ifelse(

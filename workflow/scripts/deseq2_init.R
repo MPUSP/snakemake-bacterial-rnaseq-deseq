@@ -39,9 +39,9 @@ if (!all(colnames(df_merged_counts)[-1] == sample_order)) {
 
 # merge data with annotation from gff file
 df_gff <- as_tibble(rtracklayer::import.gff(gff_file)) %>%
-  dplyr::select(all_of(c("locus_tag", "trivial_name", "gene_biotype")))
+  dplyr::select(any_of(c("locus_tag", "old_locus_tag", "trivial_name", "gene_biotype")))
 df_merged_counts <- left_join(df_merged_counts, df_gff, by = join_by("locus_tag")) %>%
-  dplyr::select(locus_tag, trivial_name, gene_biotype, everything())
+  dplyr::select(any_of(c("locus_tag", "old_locus_tag", "trivial_name", "gene_biotype")), everything())
 if ("gene_biotype" %in% colnames(df_gff)) {
   df_protein_coding <- filter(df_merged_counts, gene_biotype == "protein_coding")
   messages <- append(messages, paste0(
