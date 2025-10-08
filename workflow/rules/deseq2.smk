@@ -7,8 +7,8 @@ rule deseq2_init:
         gff="results/extracted_features/biotypes.gff",
         samplesheet=config["samplesheet"],
     output:
-        filtered_counts="results/deseq2/filtered_counts.csv",
-        merged_counts="results/deseq2/merged_counts.csv",
+        counts_merged="results/deseq2/counts_merged.csv",
+        counts_protein_coding="results/deseq2/counts_protein_coding.csv",
     log:
         path="results/deseq2/deseq2_init.log",
     conda:
@@ -17,17 +17,49 @@ rule deseq2_init:
         "../scripts/deseq2_init.R"
 
 
-rule deseq2_plots:
+rule deseq2_run:
     input:
         samplesheet=config["samplesheet"],
-        filtered_counts="results/deseq2/filtered_counts.csv",
+        counts_protein_coding=rules.deseq2_init.output.counts_protein_coding,
     output:
-        plots_dir=directory("results/deseq2/plots/"),
         deseq_results="results/deseq2/deseq2_results.csv",
+        deseq_data="results/deseq2/deseq2_data.Rdata",
     log:
-        path="results/deseq2/deseq2_plots.log",
+        path="results/deseq2/deseq2_run.log",
     conda:
         "../envs/deseq2.yml"
-    threads: workflow.cores
+    threads: int(workflow.cores * 0.25)
     script:
-        "../scripts/deseq2_plots.R"
+        "../scripts/deseq2_run.R"
+
+
+rule counts_report:
+    input:
+        counts_merged=rules.deseq2_init.output.counts_merged,
+        counts_protein_coding=rules.deseq2_init.output.counts_protein_coding,
+        samplesheet=config["samplesheet"],
+    output:
+        html="results/deseq2/counts_report.html",
+    log:
+        path="results/deseq2/counts_report.log",
+    conda:
+        "../envs/deseq2.yml"
+    threads: int(workflow.cores * 0.25)
+    script:
+        "../notebooks/counts_report.Rmd"
+
+
+rule deseq2_report:
+    input:
+        deseq_data="results/deseq2/deseq2_data.Rdata",
+        deseq_results="results/deseq2/deseq2_results.csv",
+        samplesheet=config["samplesheet"],
+    output:
+        html="results/deseq2/deseq2_report.html",
+    log:
+        path="results/deseq2/deseq2_report.log",
+    conda:
+        "../envs/deseq2.yml"
+    threads: int(workflow.cores * 0.25)
+    script:
+        "../notebooks/deseq2_report.Rmd"

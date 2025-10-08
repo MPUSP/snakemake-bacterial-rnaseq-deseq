@@ -1,0 +1,510 @@
+---
+title: "Report: RNA-Seq DESeq2 summary"
+author: "`r sessionInfo()$platform`"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+  rmd: "report.Rmd"
+output:
+  html_document:
+    theme: cosmo
+    toc: yes
+    toc_depth: 2
+    number_sections: yes
+    df_print: paged
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+# Background
+
+This report summarizes the results from running [DESeq2](https://bioconductor.org/packages/release/bioc/html/DESeq2.html),
+a package for the analysis of *differentially expressed* (DE) genes.
+The full analysis of RNA-Seq data was performed using two Snakemake workflows:
+
+1. [Snakemake workflow for bacterial RNA-Seq data processing](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing)
+2. [Snakemake workflow for bacterial RNA-Seq data analysis with DESeq2](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq)
+
+The first workflow processes raw RNA-Seq reads and generates a table of read counts per gene.
+The second workflow uses this table to perform the DE analysis with DESeq2.
+Results from the first workflow are not included in this report, but can be found in `results/deseq2/counts_report.html`.
+
+# Requirements
+
+- loading libraries `tidyverse`, `grDevices`, `DESeq2`, `ggrepel`
+
+```{r}
+suppressPackageStartupMessages({
+  library(grDevices)
+  library(tidyverse)
+  library(DESeq2)
+  library(ggrepel)
+})
+```
+
+```{r}
+# messages
+messages <- c()
+
+figure_dir <- gsub("report.html$", "figures/", snakemake@output$html)
+if (!dir.exists(figure_dir)) {
+  dir.create(figure_dir)
+  messages <- append(messages, paste0("created figure dir: ", figure_dir))
+}
+
+# custom ggplot2 theme that is reused for all later plots
+custom_colors <- c(
+  "#E7298A", "#66A61E", "#E6AB02", "#7570B3",
+  "#B3B3B3", "#1B9E77", "#D95F02", "#A6761D"
+)
+
+custom_range <- function(n = 5, quantitative = FALSE) {
+  if (quantitative) {
+    colorRampPalette(custom_colors[c(5, 3, 4)])(n)
+  } else {
+    colorRampPalette(custom_colors)(n)
+  }
+}
+
+custom_theme <- function(
+    base_size = 12, base_line_size = 1.0,
+    base_rect_size = 1.0, ...) {
+  theme_light(
+    base_size = base_size,
+    base_line_size = base_line_size,
+    base_rect_size = base_rect_size
+  ) +
+    theme(
+      plot.margin = margin(10, 10, 10, 10),
+      title = element_text(colour = grey(0.4), size = 10),
+      plot.subtitle = element_text(colour = grey(0.4), size = 9),
+      axis.ticks.length = unit(0.2, "cm"),
+      axis.ticks = element_line(
+        colour = grey(0.4),
+        linetype = "solid", lineend = "round"
+      ),
+      axis.text.x = element_text(colour = grey(0.4), size = 10),
+      axis.text.y = element_text(colour = grey(0.4), size = 10),
+      panel.grid.major = element_line(
+        linewidth = 0.6,
+        linetype = "solid", colour = grey(0.9)
+      ),
+      panel.grid.minor = element_blank(),
+      panel.border = element_rect(
+        linetype = "solid",
+        colour = grey(0.4), fill = NA, linewidth = 1.0
+      ),
+      panel.background = element_blank(),
+      strip.background = element_blank(),
+      strip.text = element_text(
+        colour = grey(0.4), size = 10, 
+        margin = margin(3, 3, 3, 3)
+      ),
+      legend.text = element_text(colour = grey(0.4), size = 10),
+      legend.title = element_blank(),
+      legend.background = element_blank(),
+      ...
+    )
+}
+
+# set graphical parameter for subfigure labels
+list_fontpars <- list(face = "plain", size = 14)
+
+# function to export an image as svg and png
+save_plot <- function(
+    pl, path = figure_dir,
+    width = figwidth, height = figheight, index = NA) {
+  pl_name <- deparse(substitute(pl))
+  if (!is.na(index)) pl_name <- paste0(pl_name, "_", index)
+  svg(
+    filename = paste0(path, pl_name, ".svg"),
+    width = width, height = height
+  )
+  print(pl)
+  dev.off()
+  png(
+    filename = paste0(path, pl_name, ".png"),
+    width = width * 125, height = height * 125, res = 120
+  )
+  print(pl)
+  invisible(capture.output(dev.off()))
+}
+```
+
+# Sample overview
+
+## Data import
+
+- imported samplesheet `r snakemake@input[["samplesheet"]]`
+- imported DESeq2 results raw data `r snakemake@input[["deseq_data"]]`
+- imported DESeq2 results table `r snakemake@input[["deseq_results"]]`
+
+
+```{r}
+df_samples <- read_tsv(snakemake@input[["samplesheet"]], show_col_types = FALSE)
+df_deseq <- read_csv(snakemake@input[["deseq_results"]], show_col_types = FALSE) %>%
+  mutate(significance = factor(significance, levels = c("significant", "not significant")))
+load(snakemake@input[["deseq_data"]])
+
+threshold_pval <- snakemake@config$deseq2$threshold_pval
+if (is.null(threshold_pval) || is.na(threshold_pval)) threshold_pval <- 0.05
+threshold_log2fc <- snakemake@config$deseq2$threshold_log2fc
+if (is.null(threshold_log2fc) || is.na(threshold_log2fc)) threshold_log2fc <- 1.0
+
+figwidth <- 9
+figheight <- ceiling(1.0 + nrow(df_samples) / 4)
+figheight2 <- 1.6 * figheight
+
+df_samples
+```
+
+## Differential gene expression
+
+- DESeq2 allows an unlimited number of comparisons between arbitrary conditions
+- for this to work, every condition must include more than 1 replicate
+- the following sections show results for all valid comparisons
+
+### User-defined comparisons
+
+- comparisons are defined in the sample sheet using the `reference` column
+- each condition will be contrasted against all listed reference conditions in this column
+- note: redundant comparisons like A vs B and B vs A are not filtered, it can be meaningful to look at differences from both sides
+
+```{r}
+df_comparison <- df_samples %>%
+  filter(!is.na(reference)) %>%
+  dplyr::select(condition, reference) %>%
+  distinct() %>%
+  tidyr::separate_longer_delim(reference, delim = ",") %>%
+  distinct() %>%
+  filter(!condition == reference) %>%
+  group_by(condition, reference) %>%
+  dplyr::summarize(`number of replicates` = n(), .groups = "drop")
+
+df_comparison
+```
+
+### Principal component analysis (PCA)
+
+- this figure shows sample similarity between conditions
+- PCA reduces the multidimensional data to 3 main dimensions
+- based on the `baseMean` information from DESeq2
+- plotted are principal component 1 (x-axis), 2 (y-axis) and 3 (point size)
+- similar conditions should cluster together
+- outliers should be easily visible
+
+```{r, fig.width = 7, fig.height = 7}
+df_pca <- plotPCA(vst(deseq_data, nsub = 100), intgroup = "condition", returnData = TRUE)
+
+plot_pca <- df_pca %>%
+  ggplot(aes(x = PC1, y = PC2, color = condition, label = name)) +
+  geom_point(alpha = 0.8) +
+  geom_text(
+    size = 4, show.legend = FALSE,
+    nudge_y = diff(range(df_pca$PC2)) / 30,
+    nudge_x = diff(range(df_pca$PC1)) / 30
+  ) +
+  labs(
+    title = "PCA, first two principal components",
+    subtitle = "Point size: PC3, color: condition, number: replicate.", x = "PC1", y = "PC2"
+  ) +
+  custom_theme(legend.position = "bottom", aspect.ratio = 1) +
+  scale_color_manual(values = colorRampPalette(custom_colors)(length(unique(df_pca$condition))))
+
+save_plot(plot_pca, width = 7, height = 7)
+print(plot_pca)
+```
+
+### Volcano plot, conditions {.tabset}
+
+- shows all genes as dots
+- x-axis: log2 fold change (DESeq2 column `log2FoldChange`)
+- y-axis: -log10 adjusted p-value (DESeq2 column `padj`)
+- the order of comparisons is *condition* ~ *reference*
+- for example `log2FC = 1` means that condition is twice as high as reference
+
+```{r}
+comparisons <- df_comparison %>%
+  group_by(condition, reference) %>%
+  group_split()
+
+replicates <- df_samples %>%
+  pull(replicate) %>%
+  unique() %>%
+  tidyr::crossing(. , .) %>%
+  setNames(c("condition", "reference")) %>%
+  distinct() %>%
+  filter(!condition == reference) %>%
+  group_by(condition, reference) %>%
+  group_split()
+
+get_limit_fc <- function(df) {
+  if (any(abs(range(df$log2FoldChange)) > 2)) {range(df$log2FoldChange)} else {c(-2, 2)}
+}
+
+get_limit_pv <- function(df) {
+  if (max(-log10(df$padj)) > 3) {c(0, max(-log10(df$padj)))} else {c(0, 3)}
+}
+
+get_limit_bm <- function(df) {
+  if (max(df$baseMean) > 10) {c(0.1, max(df$baseMean))} else {c(0.1, 10)}
+}
+
+volcano_plot <- function(df) {
+  ggplot(df, aes(x = log2FoldChange, y = -log10(padj), color = significance, label = trivial_name)) +
+    geom_point(alpha = 0.6, size = 1) +
+    geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 10) +
+    labs(
+      title = "Volcano Plot",
+      subtitle = paste0("significance: p ≤ ", threshold_pval, ", log2FC ≥ ", threshold_log2fc),
+      x = "Log2 Fold Change",
+      y = "-log10 p-value"
+    ) +
+    lims(
+      x = get_limit_fc(filter(df_deseq, factor == unique(df$factor))),
+      y = get_limit_pv(filter(df_deseq, factor == unique(df$factor)))
+    ) +
+    theme(
+      legend.title = element_blank(),
+      legend.position = "bottom",
+      aspect.ratio = 1
+    ) +
+    facet_wrap(~ paste0(condition, " ~ ", reference)) +
+    custom_theme(legend.position = "bottom", aspect.ratio = 1) +
+    scale_color_manual(values = custom_colors[c(1, 5)])
+}
+```
+
+**OVERVIEW CONDITIONS**
+
+```{r, fig.width = 8, fig.height = 8}
+plot_volcano_overview <- df_deseq %>%
+  filter(factor == "condition") %>%
+  mutate(trivial_name = "") %>%
+  volcano_plot()
+
+print(plot_volcano_overview)
+save_plot(plot_volcano_overview, width = 8, height = 8)
+```
+
+---
+
+**ONE-BY-ONE COMPARISON, CONDITIONS**
+
+```{r, results = 'asis', fig.width = 8, fig.height = 8}
+for (comp in comparisons) {
+  cat("\n\n#### ", comp$condition, " - ", comp$reference, " {-}\n\n")
+  plot_volcano <- df_deseq %>%
+    filter(condition == comp$condition, reference == comp$reference) %>%
+    mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
+    volcano_plot()
+
+  print(plot_volcano)
+  save_plot(
+    plot_volcano, width = 8, height = 8,
+    index = paste0(comp$condition, "_vs_", comp$reference)
+  )
+}
+```
+
+### Volcano plot, replicates {.tabset}
+
+- shows all genes as dots
+- x-axis: log2 fold change (DESeq2 column `log2FoldChange`)
+- y-axis: -log10 adjusted p-value (DESeq2 column `padj`)
+- the order of comparisons is *condition* ~ *reference*
+- for example `log2FC = 1` means that condition is twice as high as reference
+
+**OVERVIEW REPLICATES**
+
+```{r, fig.width = 8, fig.height = 8}
+plot_volcano_overview_rep <- df_deseq %>%
+  filter(factor == "replicate") %>%
+  mutate(trivial_name = "") %>%
+  volcano_plot()
+
+print(plot_volcano_overview_rep)
+save_plot(plot_volcano_overview_rep, width = 8, height = 8)
+```
+
+---
+
+**ONE-BY-ONE COMPARISON, REPLICATES**
+
+```{r, results = 'asis', fig.width = 8, fig.height = 8}
+for (comp in replicates) {
+  cat("\n\n#### ", comp$condition, " - ", comp$reference, " {-}\n\n")
+  plot_volcano <- df_deseq %>%
+    filter(condition == comp$condition, reference == comp$reference) %>%
+    mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
+    volcano_plot()
+
+  print(plot_volcano)
+  save_plot(
+    plot_volcano, width = 8, height = 8,
+    index = paste0(comp$condition, "_vs_", comp$reference)
+  )
+}
+```
+
+### MA pLot, conditions {.tabset}
+
+- shows all genes as dots
+- x-axis: mean expression across all samples (DESeq2 column `baseMean`)
+- y-axis: log2 fold change (DESeq2 column `log2FoldChange`)
+- how the MA plot is interpreted: 
+  - points high y-values are probably differentially expressed
+  - points with low x-values have low expression and are less reliable
+
+```{r}
+ma_plot <- function(df) {
+  ggplot(df, aes(x = baseMean, y = log2FoldChange, color = significance, label = trivial_name)) +
+    geom_point(alpha = 0.6, size = 1) +
+    geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 10) +
+    labs(
+      title = "MA Plot",
+      subtitle = paste0("significance: p ≤ ", threshold_pval, ", log2FC ≥ ", threshold_log2fc),
+      x = "Mean Expression",
+      y = "Log2 Fold Change"
+    ) +
+    lims(
+      x = get_limit_bm(filter(df_deseq, factor == unique(df$factor))),
+      y = get_limit_fc(filter(df_deseq, factor == unique(df$factor)))
+    ) +
+    scale_x_continuous(
+      # limits = NULL,
+      transform = "log10"
+    ) +
+    theme(
+      legend.title = element_blank(),
+      legend.position = "bottom",
+      aspect.ratio = 1
+    ) +
+    facet_wrap(~ paste0(condition, " ~ ", reference)) +
+    custom_theme(legend.position = "bottom", aspect.ratio = 1) +
+    scale_color_manual(values = custom_colors[c(1, 5)])
+}
+```
+
+**OVERVIEW CONDITIONS**
+
+```{r, fig.width = 8, fig.height = 8}
+plot_ma_overview <- df_deseq %>%
+  filter(factor == "condition") %>%
+  mutate(trivial_name = "") %>%
+  ma_plot()
+
+print(plot_ma_overview)
+save_plot(plot_ma_overview, width = 8, height = 8)
+```
+
+---
+
+**ONE-BY-ONE COMPARISON, CONDITIONS**
+
+```{r, results = 'asis', fig.width = 8, fig.height = 8}
+for (comp in comparisons) {
+  cat("\n\n#### ", comp$condition, " - ", comp$reference, " {-}\n\n")
+  plot_ma <- df_deseq %>%
+    filter(condition == comp$condition, reference == comp$reference) %>%
+    mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
+    ma_plot()
+
+  print(plot_ma)
+  save_plot(
+    plot_ma, width = 8, height = 8,
+    index = paste0(comp$condition, "_vs_", comp$reference)
+  )
+}
+```
+
+### MA plot, replicates {.tabset}
+
+- shows all genes as dots
+- x-axis: mean expression across all samples (DESeq2 column `baseMean`)
+- y-axis: log2 fold change (DESeq2 column `log2FoldChange`)
+- how the MA plot is interpreted: 
+  - points high y-values are probably differentially expressed
+  - points with low x-values have low expression and are less reliable
+
+**OVERVIEW REPLICATES**
+
+```{r, fig.width = 8, fig.height = 8}
+plot_ma_overview_rep <- df_deseq %>%
+  filter(factor == "replicate") %>%
+  mutate(trivial_name = "") %>%
+  ma_plot()
+
+print(plot_ma_overview_rep)
+save_plot(plot_ma_overview_rep, width = 8, height = 8)
+```
+
+---
+
+**ONE-BY-ONE COMPARISON, REPLICATES**
+
+```{r, results = 'asis', fig.width = 8, fig.height = 8}
+for (comp in replicates) {
+  cat("\n\n#### ", comp$condition, " - ", comp$reference, " {-}\n\n")
+  plot_ma <- df_deseq %>%
+    filter(condition == comp$condition, reference == comp$reference) %>%
+    mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
+    ma_plot()
+
+  print(plot_ma)
+  save_plot(
+    plot_ma, width = 8, height = 8,
+    index = paste0(comp$condition, "_vs_", comp$reference)
+  )
+}
+```
+
+# About this report
+
+## Workflow
+
+This report was automatically generated by the [snakemake-bacterial-rnaseq-deseq](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq) workflow.
+
+For issues, bugs, and feature requests please use the workflows [github page](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/issues).
+
+For all other feedback, contact the author(s):
+
+- Michael Jahn, PhD: jahn@mpusp.mpg.de
+- Rina Ahmed-Begrich, PhD: begrich@mpusp.mpg.de
+
+The workflow is developed at the [Max Planck Unit for the Science of Pathogens](https://www.mpusp.mpg.de/), Berlin, Germany.
+
+## Configuration
+
+The pipeline configuration file is available at: `config/config.yml`.
+
+```{r}
+list_config <- read_lines("config/config.yml")
+list_config <- gsub("\"", "", list_config)
+print(list_config)
+```
+
+## Data accessability
+
+Input tables are listed at the top of the report.
+
+## Session Info
+
+Link to the R markdown source that was used to generate this report:
+
+<a download="report.Rmd" href="`r base64enc::dataURI(file = params$rmd, mime = 'text/rmd', encoding = 'base64')`">R Markdown source file</a>
+
+Session info (R base and package versions):
+
+```{r}
+sessionInfo()
+```
+
+```{r}
+messages <- append(messages, "finished writing HTML report successfully")
+write_lines(
+  paste0("HTML_REPORT: ", messages),
+  file = "results/deseq2/deseq2_report.log"
+)
+```
