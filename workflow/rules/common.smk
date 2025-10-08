@@ -21,4 +21,3 @@ validate(config, schema="../../config/schemas/config.schema.yml")
 
 wildcard_constraints:
     sample="|".join(samples.index),
-    read="|".join(["R1", "R2"]),

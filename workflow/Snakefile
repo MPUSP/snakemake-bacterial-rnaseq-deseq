@@ -45,7 +45,7 @@ onerror:
 # -----------------------------------------------------
 rule all:
     input:
-        "results/report/multiqc_report.html",
+        "results/multiqc/multiqc_report.html",
         "results/deseq2/counts_report.html",
         "results/deseq2/deseq2_report.html",
     default_target: True

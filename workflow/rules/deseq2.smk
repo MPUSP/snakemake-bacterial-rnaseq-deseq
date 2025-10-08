@@ -1,7 +1,7 @@
 rule deseq2_init:
     input:
         counts_dir=expand(
-            "results/quantify_biotypes/{sample}.counts",
+            "results/qc/biotypes/{sample}.counts",
             sample=samples.index,
         ),
         gff="results/extracted_features/biotypes.gff",

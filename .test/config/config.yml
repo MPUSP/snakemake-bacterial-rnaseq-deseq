@@ -17,36 +17,26 @@ get_genome:
 extract_features:
   biotypes: ["protein_coding", "pseudogene", "ncRNA", "rRNA", "tRNA"]
 
-umi_dedup: "--edit-distance-threshold=0"
 umi_extraction:
   method: string
   pattern: "--bc-pattern X --bc-pattern2 NNNNNN --3prime --ignore-read-pair-suffixes"
+umi_dedup: "--edit-distance-threshold=0"
 
-cutadapt:
-  read1_adapter: "TTCAAAGCATCAGCCC"
-  read2_adapter: "GGGCTGATGCTTTGAA"
-  default: ["-q 10 ", "-m 18 ", "--overlap=10"]
+fastp:
+  extra: "-M 10 -l 18"
 
 star:
-  index: null
-  genomeSAindexNbases: 9
-  multi: 10
-  sam_multi: 1
-  intron_max: 1
-  default:
+  index: "--genomeSAindexNbases 9"
+  extra:
     [
-      "--readFilesCommand zcat ",
-      "--outSAMstrandField None ",
-      "--outSAMattributes All ",
-      "--outSAMattrIHstart 0 ",
-      "--outFilterType Normal ",
-      "--outFilterMultimapScoreRange 1 ",
-      "-o STARmappings ",
-      "--outSAMtype BAM Unsorted ",
-      "--outStd BAM_Unsorted ",
+      "--outFilterMultimapNmax 10 ",
+      "--outSAMmultNmax 1",
       "--outMultimapperOrder Random ",
-      "--alignEndsType EndToEnd",
     ]
+
+samtools:
+  sort: ""
+  index: ""
 
 feature_counts:
   defaults:
@@ -60,15 +50,15 @@ feature_counts:
     ]
 
 deeptools:
-  bin_size: 1
-  normalize: "CPM"
-  defaults: "--exactScaling"
-  paired_end: "--extendReads"
+  genome_size: 2000000
+  extra: "--binSize 1 --normalizeUsing CPM --exactScaling --extendReads"
+
+fastqc:
+  extra: "--quiet --nogroup"
 
 multiqc:
   config: "config/multiqc_config.yml"
-  defaults:
-    ["--dirs-depth 2 ", "--exclude general_stats ", "--force ", "--dirs"]
+  extra: "--dirs"
 
 deseq2:
   design: "~ condition + replicate"

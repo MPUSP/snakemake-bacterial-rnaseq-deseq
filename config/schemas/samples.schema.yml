@@ -11,26 +11,22 @@ properties:
     type: number
     default: 1
     description: consecutive numbers representing multiple replicates of one condition
-  experiment:
-    type: string
-    description: type of RNAseq experiment
-  fq1:
+  read1:
     type: string
     description: names of fastq files, read 1
-  fq2:
+  read2:
     type: string
     description: names of fastq files, read 2 (optional)
-  fq_umi:
+  readumi:
     type: string
     description: names of fastq files, UMI (optional)
   reference:
-    type: [string, "null", "na"]
-    description: names of fastq files, UMI (optional)
+    type: string
+    description: either a single condition serving as a reference, or comma-separated list of conditions
 
 required:
   - sample
   - condition
   - replicate
-  - experiment
-  - fq1
+  - read1
   - reference

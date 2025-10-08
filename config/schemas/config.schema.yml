@@ -23,8 +23,6 @@ properties:
         type: array
         items:
           type: string
-  umi_dedup:
-    type: string
   umi_extraction:
     properties:
       method:
@@ -32,32 +30,26 @@ properties:
         enum: ["regex", "string"]
       pattern:
         type: string
-  cutadapt:
+  umi_dedup:
+    type: string
+  fastp:
     properties:
-      read1_adapter:
+      extra:
         type: string
-      read2_adapter:
-        type: string
-      default:
-        type: array
-        items:
-          type: string
   star:
     properties:
       index:
         type: [string, "null"]
-      genomeSAindexNbases:
-        type: integer
-      multi:
-        type: integer
-      sam_multi:
-        type: integer
-      intron_max:
-        type: integer
-      default:
+      extra:
         type: array
         items:
           type: string
+  samtools:
+    properties:
+      sort:
+        type: string
+      index:
+        type: string
   feature_counts:
     properties:
       defaults:
@@ -66,22 +58,18 @@ properties:
           type: string
   deeptools:
     properties:
-      bin_size:
-        type: integer
-      normalize:
+      genome_size:
+        type: number
+      extra:
         type: string
-      defaults:
-        type: string
-      paired_end:
+  fastqc:
+    properties:
+      extra:
         type: string
   multiqc:
     properties:
       config:
         type: string
-      defaults:
-        type: array
-        items:
-          type: string
   deseq2:
     properties:
       threshold_pval:
@@ -93,9 +81,12 @@ required:
   - libtype
   - get_genome
   - extract_features
+  - umi_extraction
   - umi_dedup
-  - cutadapt
+  - fastp
   - star
+  - samtools
   - feature_counts
   - deeptools
+  - fastqc
   - multiqc
