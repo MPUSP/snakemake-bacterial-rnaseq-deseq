@@ -28,7 +28,7 @@ messages <- c()
 df_counts <- read_csv(counts_file, show_col_types = FALSE)
 annot_cols <- intersect(c("locus_tag", "old_locus_tag", "trivial_name", "gene_biotype"), colnames(df_counts))
 df_annotation <- dplyr::select(df_counts, all_of(annot_cols))
-df_sample <- read_table(samplesheet_file, show_col_types = FALSE) %>%
+df_sample <- read_tsv(samplesheet_file, show_col_types = FALSE) %>%
   mutate(replicate = as.character(replicate))
 
 metadata <- data.frame(

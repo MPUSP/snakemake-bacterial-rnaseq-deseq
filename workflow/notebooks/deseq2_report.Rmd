@@ -144,7 +144,8 @@ save_plot <- function(
 ```{r}
 df_samples <- read_tsv(snakemake@input[["samplesheet"]], show_col_types = FALSE)
 df_deseq <- read_csv(snakemake@input[["deseq_results"]], show_col_types = FALSE) %>%
-  mutate(significance = factor(significance, levels = c("significant", "not significant")))
+  mutate(significance = factor(significance, levels = c("significant", "not significant"))) %>%
+  filter(if_any(all_of(c("log2FoldChange", "lfcSE", "stat", "pvalue")), ~ !is.na(.x)))
 load(snakemake@input[["deseq_data"]])
 
 threshold_pval <- snakemake@config$deseq2$threshold_pval
@@ -175,9 +176,7 @@ df_samples
 df_comparison <- df_samples %>%
   filter(!is.na(reference)) %>%
   dplyr::select(condition, reference) %>%
-  distinct() %>%
   tidyr::separate_longer_delim(reference, delim = ",") %>%
-  distinct() %>%
   filter(!condition == reference) %>%
   group_by(condition, reference) %>%
   dplyr::summarize(`number of replicates` = n(), .groups = "drop")
@@ -244,6 +243,7 @@ get_limit_fc <- function(df) {
 }
 
 get_limit_pv <- function(df) {
+  df <- filter(df, padj > 0)
   if (max(-log10(df$padj)) > 3) {c(0, max(-log10(df$padj)))} else {c(0, 3)}
 }
 

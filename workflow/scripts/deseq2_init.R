@@ -13,7 +13,7 @@ output_merged <- snakemake@output[["counts_merged"]]
 output_protein_coding <- snakemake@output[["counts_protein_coding"]]
 
 messages <- c()
-df_sample <- read_table(samplesheet_file, show_col_types = FALSE)
+df_sample <- read_tsv(samplesheet_file, show_col_types = FALSE)
 sample_order <- df_sample$sample
 
 df_merged_counts <- lapply(counts_files, function(file) {

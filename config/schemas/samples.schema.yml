@@ -29,4 +29,3 @@ required:
   - condition
   - replicate
   - read1
-  - reference
