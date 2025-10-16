@@ -478,7 +478,7 @@ for (comp in replicates) {
 source("https://raw.githubusercontent.com/m-jahn/R-tools/refs/heads/master/R/fct_cluster.R")
 
 heat_map <- function(df) {
-  df %>%
+  df <- df %>%
     group_by(locus_tag) %>%
     mutate(max_log2FC = max(abs(log2FoldChange))) %>%
     group_by(factor, reference, condition) %>%
@@ -488,10 +488,16 @@ heat_map <- function(df) {
     mutate(
       comparison = paste0(condition, " ~ ", reference),
       comparison = factor(comparison, sort(unique(comparison))),
-      trivial_name = substr(trivial_name, 1, 18),
-      trivial_name = fct_cluster(trivial_name, comparison, log2FoldChange),
-      log2FoldChange = log2FoldChange %>% replace(., . > 4, 4) %>% replace(., . < -4, -4)
-    ) %>%
+      log2FoldChange = log2FoldChange %>% replace(., . > 4, 4) %>% replace(., . < -4, -4),
+      trivial_name = substr(trivial_name, 1, 18)
+    )
+  if (length(unique(df$trivial_name)) > 1) {
+    df <- df %>%
+      mutate(
+        trivial_name = fct_cluster(trivial_name, comparison, log2FoldChange),
+      )
+  }
+  df %>%
     ggplot(aes(x = trivial_name, y = comparison, fill = log2FoldChange)) +
     geom_tile() +
     labs(
@@ -564,9 +570,9 @@ df_hm <- df_deseq %>%
   filter(any(log2FoldChange <= -threshold_log2fc & padj <= threshold_pval))
 
 if (nrow(df_hm) > 0) {
-  plot_heat_map_conditions_down <- heat_map(df_hm)
-  print(plot_heat_map_conditions_down)
-  save_plot(plot_heat_map_conditions_down, width = 8, height = 8)
+  plot_heat_map_replicates_down <- heat_map(df_hm)
+  print(plot_heat_map_replicates_down)
+  save_plot(plot_heat_map_replicates_down, width = 8, height = 8)
 } else {
   print("No significantly changed genes were found.")
 }
@@ -581,9 +587,9 @@ df_hm <- df_deseq %>%
   filter(any(log2FoldChange >= threshold_log2fc & padj <= threshold_pval))
 
 if (nrow(df_hm) > 0) {
-  plot_heat_map_conditions_up <- heat_map(df_hm)
-  print(plot_heat_map_conditions_up)
-  save_plot(plot_heat_map_conditions_up, width = 8, height = 8)
+  plot_heat_map_replicates_up <- heat_map(df_hm)
+  print(plot_heat_map_replicates_up)
+  save_plot(plot_heat_map_replicates_up, width = 8, height = 8)
 } else {
   print("No significantly changed genes were found.")
 }
