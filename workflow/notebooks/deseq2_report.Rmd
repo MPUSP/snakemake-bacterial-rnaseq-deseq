@@ -145,7 +145,16 @@ save_plot <- function(
 df_samples <- read_tsv(snakemake@input[["samplesheet"]], show_col_types = FALSE)
 df_deseq <- read_csv(snakemake@input[["deseq_results"]], show_col_types = FALSE) %>%
   mutate(significance = factor(significance, levels = c("significant", "not significant"))) %>%
-  filter(if_any(all_of(c("log2FoldChange", "lfcSE", "stat", "pvalue")), ~ !is.na(.x)))
+  filter(if_any(all_of(c("log2FoldChange", "lfcSE", "stat", "pvalue")), ~ !is.na(.x))) %>%
+  # add suffixes to duplicated trivial names
+  arrange(factor, condition, reference, locus_tag) %>%
+  group_by(condition, reference, trivial_name) %>%
+  mutate(trivial_name = case_when(
+    n() > 1 ~ paste0(trivial_name, "_", row_number()),
+    .default = trivial_name
+  )) %>%
+  ungroup()
+
 load(snakemake@input[["deseq_data"]])
 
 threshold_pval <- snakemake@config$deseq2$threshold_pval
@@ -253,8 +262,8 @@ get_limit_bm <- function(df) {
 
 volcano_plot <- function(df) {
   ggplot(df, aes(x = log2FoldChange, y = -log10(padj), color = significance, label = trivial_name)) +
-    geom_point(alpha = 0.6, size = 1) +
-    geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 10) +
+    geom_point(alpha = 0.6, size = 1, show.legend = TRUE) +
+    geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 20) +
     labs(
       title = "Volcano Plot",
       subtitle = paste0("significance: p ≤ ", threshold_pval, ", log2FC ≥ ", threshold_log2fc),
@@ -272,7 +281,7 @@ volcano_plot <- function(df) {
     ) +
     facet_wrap(~ paste0(condition, " ~ ", reference)) +
     custom_theme(legend.position = "bottom", aspect.ratio = 1) +
-    scale_color_manual(values = custom_colors[c(1, 5)])
+    scale_color_manual(values = custom_colors[c(1, 5)], drop = FALSE)
 }
 ```
 
@@ -360,8 +369,8 @@ for (comp in replicates) {
 ```{r}
 ma_plot <- function(df) {
   ggplot(df, aes(x = baseMean, y = log2FoldChange, color = significance, label = trivial_name)) +
-    geom_point(alpha = 0.6, size = 1) +
-    geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 10) +
+    geom_point(alpha = 0.6, size = 1, show_legend = TRUE) +
+    geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 20) +
     labs(
       title = "MA Plot",
       subtitle = paste0("significance: p ≤ ", threshold_pval, ", log2FC ≥ ", threshold_log2fc),
@@ -372,10 +381,7 @@ ma_plot <- function(df) {
       x = get_limit_bm(filter(df_deseq, factor == unique(df$factor))),
       y = get_limit_fc(filter(df_deseq, factor == unique(df$factor)))
     ) +
-    scale_x_continuous(
-      # limits = NULL,
-      transform = "log10"
-    ) +
+    scale_x_continuous(transform = "log10") +
     theme(
       legend.title = element_blank(),
       legend.position = "bottom",
@@ -383,7 +389,7 @@ ma_plot <- function(df) {
     ) +
     facet_wrap(~ paste0(condition, " ~ ", reference)) +
     custom_theme(legend.position = "bottom", aspect.ratio = 1) +
-    scale_color_manual(values = custom_colors[c(1, 5)])
+    scale_color_manual(values = custom_colors[c(1, 5)], drop = FALSE)
 }
 ```
 
@@ -457,6 +463,129 @@ for (comp in replicates) {
     plot_ma, width = 8, height = 8,
     index = paste0(comp$condition, "_vs_", comp$reference)
   )
+}
+```
+
+### Heat map, top genes by condition
+
+- shows the top differentially expressed genes by log2 fold change p-value
+- the plot is restricted to the top 100 items by maximum of absolute fold change
+- genes are clustered by similarity
+- tiles: log2 fold change (DESeq2 column `log2FoldChange`)
+
+```{r}
+# import function fct_cluster from R package R-tools
+source("https://raw.githubusercontent.com/m-jahn/R-tools/refs/heads/master/R/fct_cluster.R")
+
+heat_map <- function(df) {
+  df %>%
+    group_by(locus_tag) %>%
+    mutate(max_log2FC = max(abs(log2FoldChange))) %>%
+    group_by(factor, reference, condition) %>%
+    arrange(desc(max_log2FC)) %>%
+    dplyr::slice(1:100) %>%
+    ungroup() %>%
+    mutate(
+      comparison = paste0(condition, " ~ ", reference),
+      comparison = factor(comparison, sort(unique(comparison))),
+      trivial_name = substr(trivial_name, 1, 18),
+      trivial_name = fct_cluster(trivial_name, comparison, log2FoldChange),
+      log2FoldChange = log2FoldChange %>% replace(., . > 4, 4) %>% replace(., . < -4, -4)
+    ) %>%
+    ggplot(aes(x = trivial_name, y = comparison, fill = log2FoldChange)) +
+    geom_tile() +
+    labs(
+      x = "", y = "",
+      title = "Heat map of top N differentially expressed genes.",
+      subtitle = "Color: log2 fold change (capped to -4 to 4), x: gene, y: comparison.",
+    ) +
+    custom_theme(legend.position = "bottom", aspect.ratio = 1) +
+    theme(
+      legend.title = element_blank(),
+      legend.position = "bottom",
+      aspect.ratio = 1,
+      axis.ticks.x = element_blank(),
+      axis.ticks.y = element_blank(),
+      axis.text.x = element_text(angle = 90, vjust = 0.5, size = 6),
+      axis.text.y = element_text(size = 6)
+    ) +
+    scale_fill_gradientn(colours = c(custom_colors[1], grey(0.9), custom_colors[2]),
+      limits = c(-4, 4))
+}
+```
+
+**DOWN-REGULATED**
+
+```{r, fig.width = 8, fig.height = 8}
+df_hm <- df_deseq %>%
+  filter(factor == "condition") %>%
+  group_by(locus_tag) %>%
+  filter(any(log2FoldChange <= -threshold_log2fc & padj <= threshold_pval))
+
+if (nrow(df_hm) > 0) {
+  plot_heat_map_conditions_down <- heat_map(df_hm)
+  print(plot_heat_map_conditions_down)
+  save_plot(plot_heat_map_conditions_down, width = 8, height = 8)
+} else {
+  print("No significantly changed genes were found.")
+}
+```
+
+**UP-REGULATED**
+
+```{r, fig.width = 8, fig.height = 8}
+df_hm <- df_deseq %>%
+  filter(factor == "condition") %>%
+  group_by(locus_tag) %>%
+  filter(any(log2FoldChange >= threshold_log2fc & padj <= threshold_pval))
+
+if (nrow(df_hm) > 0) {
+  plot_heat_map_conditions_up <- heat_map(df_hm)
+  print(plot_heat_map_conditions_up)
+  save_plot(plot_heat_map_conditions_up, width = 8, height = 8)
+} else {
+  print("No significantly changed genes were found.")
+}
+```
+
+### Heat map, top genes by replicate
+
+- shows the top differentially expressed genes by log2 fold change p-value
+- the plot is restricted to the top 100 items by maximum of absolute fold change
+- genes are clustered by similarity
+- tiles: log2 fold change (DESeq2 column `log2FoldChange`)
+
+**DOWN-REGULATED**
+
+```{r, fig.width = 8, fig.height = 8}
+df_hm <- df_deseq %>%
+  filter(factor == "replicate") %>%
+  group_by(locus_tag) %>%
+  filter(any(log2FoldChange <= -threshold_log2fc & padj <= threshold_pval))
+
+if (nrow(df_hm) > 0) {
+  plot_heat_map_conditions_down <- heat_map(df_hm)
+  print(plot_heat_map_conditions_down)
+  save_plot(plot_heat_map_conditions_down, width = 8, height = 8)
+} else {
+  print("No significantly changed genes were found.")
+}
+```
+
+**UP-REGULATED**
+
+```{r, fig.width = 8, fig.height = 8}
+df_hm <- df_deseq %>%
+  filter(factor == "replicate") %>%
+  group_by(locus_tag) %>%
+  filter(any(log2FoldChange >= threshold_log2fc & padj <= threshold_pval))
+
+if (nrow(df_hm) > 0) {
+  plot_heat_map_conditions_up <- heat_map(df_hm)
+  print(plot_heat_map_conditions_up)
+  save_plot(plot_heat_map_conditions_up, width = 8, height = 8)
+} else {
+  print("No significantly changed genes were found.")
 }
 ```
 
