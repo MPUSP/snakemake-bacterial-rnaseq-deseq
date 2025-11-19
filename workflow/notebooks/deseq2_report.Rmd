@@ -146,8 +146,13 @@ df_samples <- read_tsv(snakemake@input[["samplesheet"]], show_col_types = FALSE)
 df_deseq <- read_csv(snakemake@input[["deseq_results"]], show_col_types = FALSE) %>%
   mutate(significance = factor(significance, levels = c("significant", "not significant"))) %>%
   filter(if_any(all_of(c("log2FoldChange", "lfcSE", "stat", "pvalue")), ~ !is.na(.x))) %>%
-  # add suffixes to duplicated trivial names
-  arrange(factor, condition, reference, locus_tag) %>%
+  arrange(factor, condition, reference, locus_tag)
+
+# check that trivial names exist and add suffixes to duplicated entries
+if (!"trivial_name" %in% colnames(df_deseq)) {
+  df_deseq$trivial_name <- df_deseq$locus_tag
+}
+df_deseq <- df_deseq %>%
   group_by(condition, reference, trivial_name) %>%
   mutate(trivial_name = case_when(
     n() > 1 ~ paste0(trivial_name, "_", row_number()),
