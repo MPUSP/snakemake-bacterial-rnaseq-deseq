@@ -208,7 +208,15 @@ df_comparison
 - outliers should be easily visible
 
 ```{r, fig.width = 7, fig.height = 7}
-df_pca <- plotPCA(vst(deseq_data, nsub = 100), intgroup = "condition", returnData = TRUE)
+df_pca <- tryCatch(
+  {
+    plotPCA(vst(deseq_data, nsub = 10), intgroup = "condition", returnData = TRUE)
+  },
+  error = function(e) {
+    message("PCA with nsub = 100 failed, retrying with nsub = 10")
+    plotPCA(vst(deseq_data, nsub = 1), intgroup = "condition", returnData = TRUE)
+  }
+)
 
 plot_pca <- df_pca %>%
   ggplot(aes(x = PC1, y = PC2, color = condition, label = name)) +
