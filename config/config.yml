@@ -61,6 +61,7 @@ multiqc:
   extra: "--dirs"
 
 deseq2:
+  biotypes: ["protein_coding", "pseudogene", "ncRNA"]
   design: "~ condition + replicate"
   threshold_pval: 0.05
   threshold_log2fc: 2.0

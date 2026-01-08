@@ -72,10 +72,20 @@ properties:
         type: string
   deseq2:
     properties:
+      biotypes:
+        type: array
+        items:
+          type: string
+        description: list of gene biotypes to include in DESeq2 analysis
+      design:
+        type: string
+        description: design formula for DESeq2, e.g. "~ condition + replicate"
       threshold_pval:
         type: number
+        description: adjusted p-value threshold for significance
       threshold_log2fc:
         type: number
+        description: log2 fold-change threshold for significance
 required:
   - samplesheet
   - libtype

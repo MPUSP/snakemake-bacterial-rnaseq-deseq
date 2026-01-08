@@ -11,7 +11,7 @@ suppressWarnings({
 })
 
 # parameters
-counts_file <- snakemake@input[["counts_protein_coding"]]
+counts_file <- snakemake@input[["counts_filtered"]]
 samplesheet_file <- snakemake@input[["samplesheet"]]
 genome_gff <- snakemake@input[["gff"]]
 deseq_results_file <- snakemake@output[["deseq_results"]]

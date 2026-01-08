@@ -129,20 +129,20 @@ save_plot <- function(
 
 - imported samplesheet `r snakemake@input[["samplesheet"]]`
 - imported table with all counts `r snakemake@input[["counts_merged"]]`
-- imported table with only protein-coding features `r snakemake@input[["counts_protein_coding"]]`
+- imported table with counts filtered by biotype `r snakemake@input[["counts_filtered"]]`
 
 ```{r}
 # table import
 samplesheet <- snakemake@input[["samplesheet"]]
 all_counts <- snakemake@input[["counts_merged"]]
-protein_counts <- snakemake@input[["counts_protein_coding"]]
+filtered_counts <- snakemake@input[["counts_filtered"]]
 
 annot_cols <- c("old_locus_tag", "trivial_name", "gene_biotype")
 df_samples <- read_tsv(samplesheet, show_col_types = FALSE)
 df_all_counts <- read_csv(all_counts, show_col_types = FALSE) %>%
   dplyr::select(-any_of(annot_cols)) %>%
   pivot_longer(cols = -c(locus_tag), names_to = "sample", values_to = "n_reads")
-df_prot_counts <- read_csv(protein_counts, show_col_types = FALSE) %>%
+df_filtered_counts <- read_csv(filtered_counts, show_col_types = FALSE) %>%
   dplyr::select(-any_of(annot_cols)) %>%
   pivot_longer(cols = -c(locus_tag), names_to = "sample", values_to = "n_reads")
 
@@ -150,6 +150,9 @@ df_prot_counts <- read_csv(protein_counts, show_col_types = FALSE) %>%
 figwidth <- 9
 figheight <- ceiling(1.0 + nrow(df_samples) / 4)
 figheight2 <- 1.6 * figheight
+
+# biotypes used for filtering
+biotypes <- snakemake@config[["deseq2"]][["biotypes"]]
 ```
 
 ## Samples
@@ -159,7 +162,7 @@ figheight2 <- 1.6 * figheight
 
 ```{r}
 df_summary <- bind_rows(
-  list(all = df_all_counts, `protein coding` = df_prot_counts),
+  list(all = df_all_counts, `biotype-filtered` = df_filtered_counts),
   .id = "type"
 ) %>%
   dplyr::group_by(type, sample) %>%
@@ -173,7 +176,7 @@ df_summary <- bind_rows(
     max_reads = max(n_reads, na.rm = TRUE),
   ) %>%
   arrange(desc(type)) %>%
-  mutate(type = factor(type, c("protein coding", "all")))
+  mutate(type = factor(type, c("biotype-filtered", "all")))
 
 df_summary
 ```
@@ -183,13 +186,14 @@ df_summary
 ### Mapped reads per sample
 
 - figure shows the total number of mapped reads
-- reads are shown as total counts or only protein-coding counts
+- reads are shown as total counts, or only biotype-filtered counts
+- retained reads for biotypes: `r paste(biotypes, collapse = ", ")`
 
 ```{r, fig.width = figwidth, fig.height = figheight, warning = FALSE}
 plot_total_mapped_reads <- df_summary %>%
-  ggplot(aes(x = sample, y = total_reads, fill = type)) +
+  ggplot(aes(x = fct_rev(sample), y = total_reads, fill = type)) +
   coord_flip() +
-  geom_col(alpha = 0.8, position = "identity") +
+  geom_col(alpha = 0.8, position = "dodge") +
   labs(x = "", y = "total number of mapped reads") +
   custom_theme() +
   scale_fill_manual(values = custom_colors[c(1, 5)])
@@ -201,12 +205,14 @@ print(plot_total_mapped_reads)
 ### Mean reads per gene
 
 - figure shows the mean number of reads mapped per gene and sample
+- reads are shown as total counts, or only biotype-filtered counts
+- retained reads for biotypes: `r paste(biotypes, collapse = ", ")`
 
 ```{r, fig.width = figwidth, fig.height = figheight, warning = FALSE}
 plot_mean_mapped_reads <- df_summary %>%
-  ggplot(aes(x = sample, y = mean_reads, fill = type)) +
+  ggplot(aes(x = fct_rev(sample), y = mean_reads, fill = type)) +
   coord_flip() +
-  geom_col(alpha = 0.8, position = "identity") +
+  geom_col(alpha = 0.8, position = "dodge") +
   labs(x = "", y = "mean number of mapped reads") +
   custom_theme() +
   scale_fill_manual(values = custom_colors[c(1, 5)])
@@ -218,12 +224,12 @@ print(plot_mean_mapped_reads)
 ### Max and min reads per gene
 
 - figure shows the maximum and minimum number of reads mapped per gene and sample
-- only protein-coding counts are shown
+- only biotype-filtered counts are shown (biotypes: `r paste(biotypes, collapse = ", ")`)
 
 ```{r, fig.width = figwidth, fig.height = figheight, warning = FALSE}
 plot_min_max_reads <- df_summary %>%
-  filter(type == "protein coding") %>%
-  ggplot(aes(x = sample)) +
+  filter(type == "biotype-filtered") %>%
+  ggplot(aes(x = fct_rev(sample))) +
   geom_point(aes(y = min_reads), shape = 19, size = 2, color = custom_colors[1]) +
   geom_point(aes(y = max_reads), shape = 19, size = 2, color = custom_colors[1]) +
   geom_segment(aes(y = min_reads, yend = max_reads, xend = sample), color = custom_colors[1], linewidth = 1.0) +
@@ -238,13 +244,13 @@ print(plot_min_max_reads)
 ### Number of missing gene quantifications per sample
 
 - figure shows the number of missing genes per sample (zero reads)
-- only protein-coding counts are shown
+- only biotype-filtered counts are shown (biotypes: `r paste(biotypes, collapse = ", ")`)
 
 ```{r, fig.width = figwidth, fig.height = figheight, warning = FALSE}
-plot_missing_quants <- df_prot_counts %>%
+plot_missing_quants <- df_filtered_counts %>%
   dplyr::group_by(sample) %>%
   dplyr::summarize(`missing gene quantifications` = sum(n_reads == 0)) %>%
-  ggplot(aes(x = sample, y = `missing gene quantifications`)) +
+  ggplot(aes(x = fct_rev(sample), y = `missing gene quantifications`)) +
   geom_col(fill = custom_colors[1], alpha = 0.8) +
   labs(x = "") +
   coord_flip() +
@@ -259,10 +265,11 @@ print(plot_missing_quants)
 - figure shows the read count distribution per sample
 - genes without mapped reads for the respective sample are removed
 - read count is log 10 transformed (0 -> 1, 1 -> 10, 2 -> 100, ...)
+- only biotype-filtered counts are shown (biotypes: `r paste(biotypes, collapse = ", ")`)
 
 ```{r, fig.width = figwidth, fig.height = figheight, warning = FALSE}
-plot_reads_per_gene_violin <- df_prot_counts %>%
-  ggplot(aes(x = log10(n_reads), y = sample)) +
+plot_reads_per_gene_violin <- df_filtered_counts %>%
+  ggplot(aes(x = log10(n_reads), y = fct_rev(sample))) +
   geom_violin(fill = custom_colors[1], alpha = 0.8, color = NA) +
   labs(y = "", x = expression("log"[10] * " reads per gene")) +
   custom_theme()
@@ -276,9 +283,10 @@ print(plot_reads_per_gene_violin)
 - figure shows the same data as above, only as histogram
 - genes without mapped reads for the respective sample are removed
 - read count is log 10 transformed (0 -> 1, 1 -> 10, 2 -> 100, ...)
+- only biotype-filtered counts are shown (biotypes: `r paste(biotypes, collapse = ", ")`)
 
 ```{r, fig.width = figwidth, fig.height = figheight2, warning = FALSE}
-plot_reads_per_gene_hist <- df_prot_counts %>%
+plot_reads_per_gene_hist <- df_filtered_counts %>%
   ggplot(aes(x = log10(n_reads))) +
   geom_histogram(fill = custom_colors[1], alpha = 0.7, bins = 30) +
   labs(y = "n genes", x = expression("log"[10] * " reads per gene")) +
@@ -292,10 +300,10 @@ print(plot_reads_per_gene_hist)
 ### Top 10 most abundant genes by read number
 
 - figure shows top 10 genes ranked by read count
-- only protein-coding counts are shown
+- only biotype-filtered counts are shown (biotypes: `r paste(biotypes, collapse = ", ")`)
 
 ```{r, fig.width = figwidth, fig.height = figheight2, warning = FALSE}
-plot_top10_genes <- df_prot_counts %>%
+plot_top10_genes <- df_filtered_counts %>%
   dplyr::group_by(sample) %>%
   dplyr::arrange(sample, desc(n_reads)) %>%
   dplyr::mutate(rank = seq_along(locus_tag)) %>%
@@ -318,9 +326,10 @@ print(plot_top10_genes)
 - if read distribution (red line) is highly skewed, `% of reads` (y-axis) shows a steep ascent
 - this means very few genes contribute to most of the reads
 - a skewed distribution is expected for RNA-Seq experiments and generally not problematic by itself
+- only biotype-filtered counts are shown (biotypes: `r paste(biotypes, collapse = ", ")`)
 
 ```{r, fig.width = figwidth, fig.height = figheight2, warning = FALSE}
-df_auc <- df_prot_counts %>%
+df_auc <- df_filtered_counts %>%
   dplyr::arrange(sample, desc(n_reads)) %>%
   dplyr::group_by(sample) %>%
   dplyr::mutate(
@@ -375,9 +384,10 @@ df_auc %>%
 
 - figure shows heat map with correlation coefficient (range: -1 < R < 1)
 - correlation coefficient shows how strongly read abundance is correlated
+- only biotype-filtered counts are shown (biotypes: `r paste(biotypes, collapse = ", ")`)
 
 ```{r, fig.width = 7.5, fig.height = 7, warning = FALSE}
-df_correlation <- df_prot_counts %>%
+df_correlation <- df_filtered_counts %>%
   tidyr::pivot_wider(names_from = "sample", values_from = "n_reads") %>%
   dplyr::select(-locus_tag) %>%
   cor()
@@ -416,9 +426,10 @@ print(plot_replicate_correlation)
 - plotted are principal component 1 (x-axis), 2 (y-axis) and 3 (point size)
 - replicates for similar conditions should cluster together
 - outliers should be easily visible
+- only biotype-filtered counts are shown (biotypes: `r paste(biotypes, collapse = ", ")`)
 
 ```{r, fig.width = 7, fig.height = 7, warning = FALSE}
-pca_result <- df_prot_counts %>%
+pca_result <- df_filtered_counts %>%
   tidyr::pivot_wider(names_from = "sample", values_from = "n_reads") %>%
   dplyr::select(-locus_tag) %>%
   as.matrix() %>%

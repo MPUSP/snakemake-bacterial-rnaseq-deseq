@@ -20,14 +20,14 @@ The pipeline contains simulated paired-end `fastq.gz` read files for running aut
 Using the workflow as a **standalone module**, it requires instead:
 
 - **`<sample_name>.counts`** – coverage data for each sample obtained as output from the [RNA-Seq processing](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing) workflow
-- **`biotypes.gff`** – gene feature annotations for filtering protein-coding genes, obtained as output from the [RNA-Seq processing](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing) workflow
+- **`biotypes.gff`** – gene feature annotations for filtering e.g. protein-coding genes, obtained as output from the [RNA-Seq processing](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing) workflow
 
 ## Output
 
 After successful execution, results will be available in the `results/deseq2/` directory, including:
 
 - `counts_merged.csv` – Merged counts from all samples.
-- `counts_protein_coding.csv` – Filtered counts for protein-coding genes.
+- `counts_filtered.csv` – Filtered counts, e.g. to include only genes with biotype `protein-coding`.
 - `deseq2_results.csv` – DESeq2 results for all comparisons.
 - `deseq2_report.html` – Comprehensive HTML report with visualizations and summaries.
 - `counts_report.html` – Comprehensive HTML report for counts data.
