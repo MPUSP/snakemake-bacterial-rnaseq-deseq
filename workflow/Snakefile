@@ -18,7 +18,7 @@ module rnaseq_processing:
         github(
             "MPUSP/snakemake-bacterial-rnaseq-processing",
             path="workflow/Snakefile",
-            branch="improvements",
+            branch="main",
         )
     config:
         config
@@ -44,8 +44,8 @@ onerror:
 # target rules
 # -----------------------------------------------------
 rule all:
+    default_target: True
     input:
         "results/multiqc/multiqc_report.html",
         "results/deseq2/counts_report.html",
         "results/deseq2/deseq2_report.html",
-    default_target: True

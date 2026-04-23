@@ -275,7 +275,11 @@ get_limit_fc <- function(df) {
 
 get_limit_pv <- function(df) {
   df <- filter(df, padj > 0)
-  if (max(-log10(df$padj)) > 3) {c(0, max(-log10(df$padj)))} else {c(0, 3)}
+  if (nrow(df) == 0) {
+    return(c(0, 3))
+  }
+  max_pv <- max(-log10(df$padj), na.rm = TRUE)
+  if (is.finite(max_pv) && max_pv > 3) {c(0, max_pv)} else {c(0, 3)}
 }
 
 get_limit_bm <- function(df) {
@@ -391,7 +395,7 @@ for (comp in replicates) {
 ```{r}
 ma_plot <- function(df) {
   ggplot(df, aes(x = baseMean, y = log2FoldChange, color = significance, label = trivial_name)) +
-    geom_point(alpha = 0.6, size = 1, show_legend = TRUE) +
+    geom_point(alpha = 0.6, size = 1, show.legend = TRUE) +
     geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 20) +
     labs(
       title = "MA Plot",
@@ -516,7 +520,7 @@ heat_map <- function(df) {
   if (length(unique(df$trivial_name)) > 1) {
     df <- df %>%
       mutate(
-        trivial_name = fct_cluster(trivial_name, comparison, log2FoldChange),
+        trivial_name = fct_cluster(trivial_name, comparison, log2FoldChange)
       )
   }
   df %>%

@@ -143,6 +143,12 @@ properties:
   deseq2:
     type: object
     properties:
+      biotypes:
+        type: array
+        description: Biotypes to include in the DESeq2 analysis.
+        default: ["protein_coding", "pseudogene", "ncRNA"]
+        items:
+          type: string
       design:
         type: string
         description: DESeq2 design formula for differential expression analysis.

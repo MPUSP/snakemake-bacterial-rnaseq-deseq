@@ -48,7 +48,7 @@ df_merged_counts <- left_join(df_merged_counts, df_gff, by = join_by("locus_tag"
   dplyr::select(any_of(c("locus_tag", "old_locus_tag", "trivial_name", "gene_biotype")), everything())
 if ("gene_biotype" %in% colnames(df_gff) && !is.null(biotypes)) {
   df_filtered <- filter(df_merged_counts, gene_biotype %in% biotypes)
-  messages <- append(messages, paste0(
+  messages <- append(messages, c(
     "Filtering by gene biotypes: ", paste(biotypes, collapse = ", "),
     "Number of all entries: ", nrow(df_merged_counts),
     "Number of kept entries after filtering: ", nrow(df_filtered)

@@ -1,7 +1,6 @@
 import pandas as pd
 from snakemake.utils import validate
 
-
 # read sample sheet
 # -----------------------------------------------------
 na_values = ["", "NaN", "nan", "null", "-"]

@@ -22,10 +22,13 @@ properties:
     description: names of fastq files, UMI (optional)
   reference:
     type: string
-    description: either a single condition serving as a reference, or comma-separated list of conditions
+    description: |
+      either a single condition serving as a reference,
+      or a comma-separated list of conditions, or empty for no comparisons
 
 required:
   - sample
   - condition
   - replicate
   - read1
+  - reference
