@@ -213,8 +213,17 @@ df_pca <- tryCatch(
     plotPCA(vst(deseq_data, nsub = 10), intgroup = "condition", returnData = TRUE)
   },
   error = function(e) {
-    message("PCA with nsub = 100 failed, retrying with nsub = 10")
-    plotPCA(vst(deseq_data, nsub = 1), intgroup = "condition", returnData = TRUE)
+    if (grepl("gene-wise dispersion estimates are within 2 orders of magnitude", e$message)) {
+      message("Dispersion estimation failed, likely due to low number of genes/conditions. Retrying alternative method.")
+      # perform custom transformation, from DESeq2 help section.
+      dds <- estimateSizeFactors(deseq_data)
+      # shifted log of normalized counts
+      se <- SummarizedExperiment(log2(counts(dds, normalized=TRUE) + 1), colData=colData(dds))
+      plotPCA(DESeqTransform(se), intgroup = "condition", returnData = TRUE)
+    } else {
+      message("PCA with nsub = 10 failed, retrying with nsub = 1")
+      plotPCA(vst(deseq_data, nsub = 1), intgroup = "condition", returnData = TRUE)
+    }
   }
 )
 
