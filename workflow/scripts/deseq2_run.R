@@ -17,6 +17,8 @@ genome_gff <- snakemake@input[["gff"]]
 deseq_results_file <- snakemake@output[["deseq_results"]]
 deseq_data_file <- snakemake@output[["deseq_data"]]
 design <- snakemake@config$deseq2$design
+shrink <- snakemake@config$deseq2$lfc_shrinkage
+shrink_type <- snakemake@config$deseq2$lfc_shrinkage_type
 n_cores <- snakemake@threads
 threshold_pval <- snakemake@config$deseq2$threshold_pval
 if (is.null(threshold_pval) || is.na(threshold_pval)) threshold_pval <- 0.05
@@ -51,7 +53,7 @@ n_conditions <- length(levels(metadata$condition))
 n_replicates <- length(levels(metadata$replicate))
 for (fact in c("condition", "replicate")) {
   if (grepl(fact, design) & get(paste0("n_", fact, "s")) <= 1) {
-    stop("found less than 2 ", fact, "s: can not use a design which contains '~ ", fact,"'.")
+    stop("found less than 2 ", fact, "s: can not use a design which contains '~ ", fact, "'.")
   }
 }
 
@@ -91,12 +93,12 @@ if (grepl("replicate", design)) {
     df_comparison,
     df_sample %>%
       pull(replicate) %>%
-      tidyr::crossing(. , .) %>%
+      tidyr::crossing(., .) %>%
       setNames(c("condition", "reference")) %>%
       distinct() %>%
       filter(!condition == reference) %>%
       mutate(factor = "replicate")
-    )
+  )
   messages <- append(messages, paste0(
     "making ", nrow(filter(df_comparison, factor == "replicate")),
     " comparisons by contrasting all replicates against each other"
@@ -111,25 +113,77 @@ deseq_data <- DESeqDataSetFromMatrix(
 ) %>%
   DESeq()
 
-# call DESeq2's `results()` function with pairs of
-# contrasts like `contrast("variable", "level1", "level2")`
-deseq_result <- df_comparison %>%
-  group_by(factor, condition, reference) %>%
-  group_split() %>%
-  lapply(function(comp) {
-    DESeq2::results(deseq_data,
-      contrast = c(comp$factor, comp$condition, comp$reference),
-      parallel = TRUE, BPPARAM = MulticoreParam(n_cores)
-    ) %>%
-      as_tibble() %>%
-      mutate(
-        factor = comp$factor,
-        reference = comp$reference,
-        condition = comp$condition,
-        locus_tag = df_counts[[1]]
-      )
-  }) %>%
-  bind_rows()
+# get DESeq2 results
+if (shrink && shrink_type %in% c("apeglm", "ashr")) {
+  # results are obtained using coefs (defined comparisons) in case of shrinking
+  # with methods "apeglm" or "ashr"
+  messages <- append(messages, paste0(
+    "applying log2-FC shrinkage using method: ", shrink_type
+  ))
+  deseq_result <- lapply(
+    setdiff(resultsNames(deseq_data), "Intercept"),
+    function(coef) {
+      DESeq2::lfcShrink(
+        deseq_data,
+        coef = coef,
+        type = shrink_type,
+        parallel = TRUE, BPPARAM = MulticoreParam(n_cores)
+      ) %>%
+        as_tibble() %>%
+        mutate(coef = coef, locus_tag = df_counts[[1]])
+    }
+  ) %>%
+    bind_rows() %>%
+    mutate(stat = NA) %>%
+    tidyr::separate(coef, into = c("factor", "reference"), sep = "\\_vs\\_") %>%
+    tidyr::separate(factor, into = c("factor", "condition"), sep = "\\_")
+} else if (shrink && shrink_type == "normal") {
+  # results are obtained using contrasts in case of no shrinking
+  # or shrinking with method "normal"
+  messages <- append(messages, paste0(
+    "applying log2-FC shrinkage using method: ", shrink_type
+  ))
+  deseq_result <- df_comparison %>%
+    group_by(factor, condition, reference) %>%
+    group_split() %>%
+    lapply(function(comp) {
+      DESeq2::lfcShrink(deseq_data,
+        contrast = c(comp$factor, comp$condition, comp$reference),
+        type = shrink_type,
+        parallel = TRUE, BPPARAM = MulticoreParam(n_cores)
+      ) %>%
+        as_tibble() %>%
+        mutate(
+          factor = comp$factor,
+          condition = comp$condition,
+          reference = comp$reference,
+          locus_tag = df_counts[[1]]
+        )
+    }) %>%
+    bind_rows()
+} else {
+  messages <- append(messages, paste0(
+    "not applying shrinkage, using default DESeq2 results with contrasts"
+  ))
+  deseq_result <- df_comparison %>%
+    group_by(factor, condition, reference) %>%
+    group_split() %>%
+    lapply(function(comp) {
+      DESeq2::results(deseq_data,
+        contrast = c(comp$factor, comp$condition, comp$reference),
+        parallel = TRUE, BPPARAM = MulticoreParam(n_cores)
+      ) %>%
+        as_tibble() %>%
+        mutate(
+          factor = comp$factor,
+          condition = comp$condition,
+          reference = comp$reference,
+          locus_tag = df_counts[[1]]
+        )
+    }) %>%
+    bind_rows()
+}
+
 
 # slightly reformat df
 deseq_result <- deseq_result %>%

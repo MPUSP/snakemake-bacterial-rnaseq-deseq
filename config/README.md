@@ -1,6 +1,12 @@
 ## Workflow overview
 
-This workflow is a best-practice workflow for **differential gene expression analysis** from short read sequencing data, optimized for bacteria. This workflow is essentially a [**DESeq2**](https://doi.org/10.1186/s13059-014-0550-8)-add-on for the pre-processing handled by [snakemake-bacterial-rnaseq-processing](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing). The workflow is built using [snakemake](https://snakemake.readthedocs.io/en/stable/) and consists of the following steps:
+A Snakemake workflow for **RNA-Seq differential gene expression analysis** using [**DESeq2**](https://doi.org/10.1186/s13059-014-0550-8).
+
+This workflow performs a follow-up analysis on the results from the [**snakemake-bacterial-rnaseq-processing**](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing) workflow, which it imports as a [snakemake module](https://snakemake.readthedocs.io/en/latest/snakefiles/modularization.html#).
+The first workflow processes and maps raw RNA-Seq reads and generates a table of read counts per gene.
+The second workflow uses this table to perform the DE analysis with DESeq2.
+
+The workflow is built using [snakemake](https://snakemake.readthedocs.io/en/stable/) and consists of the following steps:
 
 1. Optionally run all steps from [snakemake-bacterial-rnaseq-processing](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing) as the first module
 2. Import counts-per-feature data, the output from step 1

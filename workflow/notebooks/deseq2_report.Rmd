@@ -184,7 +184,7 @@ df_samples
 
 - comparisons are defined in the sample sheet using the `reference` column
 - each condition will be contrasted against all listed reference conditions in this column
-- note: redundant comparisons like A vs B and B vs A are not filtered, it can be meaningful to look at differences from both sides
+- note: redundant comparisons like A vs B and B vs A are not filtered, it can be meaningful to look at differences from both sides; these comparisons are only included when `shrinkage` is not applied with methods "apeglm" or "ashr"
 
 ```{r}
 df_comparison <- df_samples %>%
@@ -193,7 +193,11 @@ df_comparison <- df_samples %>%
   tidyr::separate_longer_delim(reference, delim = ",") %>%
   filter(!condition == reference) %>%
   group_by(condition, reference) %>%
-  dplyr::summarize(`number of replicates` = n(), .groups = "drop")
+  dplyr::summarize(`number of replicates` = n(), .groups = "drop") %>%
+  inner_join(
+    dplyr::select(df_deseq, condition, reference) %>% distinct(),
+    by = join_by(condition, reference)
+  )
 
 df_comparison
 ```
@@ -266,6 +270,14 @@ replicates <- df_samples %>%
   setNames(c("condition", "reference")) %>%
   distinct() %>%
   filter(!condition == reference) %>%
+  inner_join(
+    df_deseq %>%
+    filter(factor == "replicate") %>%
+    dplyr::select(condition, reference) %>%
+    mutate(across(everything(), as.numeric)) %>%
+    distinct(),
+    by = join_by(condition, reference)
+  ) %>%
   group_by(condition, reference) %>%
   group_split()
 

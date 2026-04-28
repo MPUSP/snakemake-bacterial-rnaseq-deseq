@@ -153,6 +153,15 @@ properties:
         type: string
         description: DESeq2 design formula for differential expression analysis.
         default: "~ condition + replicate"
+      lfc_shrinkage:
+        type: boolean
+        description: Whether to apply log2 fold change shrinkage in DESeq2.
+        default: false
+      lfc_shrinkage_type:
+        type: string
+        enum: ["normal", "apeglm", "ashr"]
+        description: Method to use for log2 fold change shrinkage, if enabled.
+        default: "normal"
       threshold_pval:
         type: number
         description: P-value threshold for DESeq2 results.

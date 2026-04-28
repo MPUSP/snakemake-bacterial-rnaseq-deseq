@@ -10,7 +10,9 @@
 
 A Snakemake workflow for **RNA-Seq differential gene expression analysis** using [**DESeq2**](https://doi.org/10.1186/s13059-014-0550-8).
 
-This workflow represents **Module 2 of a two-step workflow set** for the analysis of bacterial transcriptomics data. The first workflow handling the pre-processing is [**snakemake-bacterial-rnaseq-processing**](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing).
+This workflow performs a follow-up analysis on the results from the [**snakemake-bacterial-rnaseq-processing**](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing) workflow, which it imports as a [snakemake module](https://snakemake.readthedocs.io/en/latest/snakefiles/modularization.html#).
+The first workflow processes and maps raw RNA-Seq reads and generates a table of read counts per gene.
+The second workflow uses this table to perform the DE analysis with DESeq2.
 
 - [snakemake-bacterial-rnaseq-deseq](#snakemake-bacterial-rnaseq-deseq)
   - [Usage](#usage)
