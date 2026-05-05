@@ -5,6 +5,7 @@ suppressWarnings({
     library(tibble)
     library(dplyr)
     library(tidyr)
+    library(stringr)
     library(DESeq2)
     library(BiocParallel)
   })
@@ -105,30 +106,46 @@ if (grepl("replicate", design)) {
   ))
 }
 
+# check that conditions and references do not contain the string '_vs_'
+if (
+  grepl("condition", design) &&
+  nrow(filter(df_comparison, if_any(c(condition, reference), ~ str_detect(., "_vs_"))))
+) {
+  stop("found string '_vs_' in condition or reference names, which is not allowed")
+}
+
 # DESeq data set
+quiet_deseq <- purrr::quietly(DESeq2::DESeq)
 deseq_data <- DESeqDataSetFromMatrix(
   countData = df_counts[-1],
   colData = metadata,
   design = formula(design)
 ) %>%
-  DESeq()
+  quiet_deseq()
+
+messages <- append(messages, deseq_data$messages)
+deseq_data <- deseq_data$result
+
+if (shrink) {
+  messages <- append(messages, paste0(
+    "applying log2-FC shrinkage using method: ", shrink_type
+  ))
+  quiet_shrink <- purrr::quietly(DESeq2::lfcShrink)
+}
 
 # get DESeq2 results
 if (shrink && shrink_type %in% c("apeglm", "ashr")) {
   # results are obtained using coefs (defined comparisons) in case of shrinking
   # with methods "apeglm" or "ashr"
-  messages <- append(messages, paste0(
-    "applying log2-FC shrinkage using method: ", shrink_type
-  ))
   deseq_result <- lapply(
     setdiff(resultsNames(deseq_data), "Intercept"),
     function(coef) {
-      DESeq2::lfcShrink(
+      quiet_shrink(
         deseq_data,
         coef = coef,
         type = shrink_type,
         parallel = TRUE, BPPARAM = MulticoreParam(n_cores)
-      ) %>%
+      )$result %>%
         as_tibble() %>%
         mutate(coef = coef, locus_tag = df_counts[[1]])
     }
@@ -136,22 +153,19 @@ if (shrink && shrink_type %in% c("apeglm", "ashr")) {
     bind_rows() %>%
     mutate(stat = NA) %>%
     tidyr::separate(coef, into = c("factor", "reference"), sep = "\\_vs\\_") %>%
-    tidyr::separate(factor, into = c("factor", "condition"), sep = "\\_")
+    tidyr::separate(factor, into = c("factor", "condition"), sep = "\\_", extra = "merge")
 } else if (shrink && shrink_type == "normal") {
   # results are obtained using contrasts in case of no shrinking
   # or shrinking with method "normal"
-  messages <- append(messages, paste0(
-    "applying log2-FC shrinkage using method: ", shrink_type
-  ))
   deseq_result <- df_comparison %>%
     group_by(factor, condition, reference) %>%
     group_split() %>%
     lapply(function(comp) {
-      DESeq2::lfcShrink(deseq_data,
+      quiet_shrink(deseq_data,
         contrast = c(comp$factor, comp$condition, comp$reference),
         type = shrink_type,
         parallel = TRUE, BPPARAM = MulticoreParam(n_cores)
-      ) %>%
+      )$result %>%
         as_tibble() %>%
         mutate(
           factor = comp$factor,
@@ -163,7 +177,7 @@ if (shrink && shrink_type %in% c("apeglm", "ashr")) {
     bind_rows()
 } else {
   messages <- append(messages, paste0(
-    "not applying shrinkage, using default DESeq2 results with contrasts"
+    "not applying shrinkage, using default DESeq2::results() with contrasts"
   ))
   deseq_result <- df_comparison %>%
     group_by(factor, condition, reference) %>%
