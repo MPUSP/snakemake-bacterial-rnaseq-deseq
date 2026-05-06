@@ -53,7 +53,7 @@ df_counts <- df_counts[c("locus_tag", df_sample$sample)]
 n_conditions <- length(levels(metadata$condition))
 n_replicates <- length(levels(metadata$replicate))
 for (fact in c("condition", "replicate")) {
-  if (grepl(fact, design) & get(paste0("n_", fact, "s")) <= 1) {
+  if (grepl(fact, design) && get(paste0("n_", fact, "s")) <= 1) {
     stop("found less than 2 ", fact, "s: can not use a design which contains '~ ", fact, "'.")
   }
 }
@@ -109,13 +109,18 @@ if (grepl("replicate", design)) {
 # check that conditions and references do not contain the string '_vs_'
 if (
   grepl("condition", design) &&
-  nrow(filter(df_comparison, if_any(c(condition, reference), ~ str_detect(., "_vs_"))))
+    nrow(filter(df_comparison, if_any(c(condition, reference), ~ str_detect(., "_vs_"))))
 ) {
   stop("found string '_vs_' in condition or reference names, which is not allowed")
 }
 
-# DESeq data set
+# define quiet wrappers
 quiet_deseq <- purrr::quietly(DESeq2::DESeq)
+quiet_shrink <- purrr::quietly(DESeq2::lfcShrink)
+quiet_results <- purrr::quietly(DESeq2::results)
+
+
+# DESeq data set
 deseq_data <- DESeqDataSetFromMatrix(
   countData = df_counts[-1],
   colData = metadata,
@@ -126,67 +131,77 @@ deseq_data <- DESeqDataSetFromMatrix(
 messages <- append(messages, deseq_data$messages)
 deseq_data <- deseq_data$result
 
-if (shrink) {
-  messages <- append(messages, paste0(
-    "applying log2-FC shrinkage using method: ", shrink_type
-  ))
-  quiet_shrink <- purrr::quietly(DESeq2::lfcShrink)
-}
 
 # get DESeq2 results
 if (shrink && shrink_type %in% c("apeglm", "ashr")) {
-  # results are obtained using coefs (defined comparisons) in case of shrinking
+  # results are obtained using coefficients in case of shrinking
   # with methods "apeglm" or "ashr"
-  deseq_result <- lapply(
-    setdiff(resultsNames(deseq_data), "Intercept"),
-    function(coef) {
-      quiet_shrink(
-        deseq_data,
-        coef = coef,
-        type = shrink_type,
-        parallel = TRUE, BPPARAM = MulticoreParam(n_cores)
-      )$result %>%
-        as_tibble() %>%
-        mutate(coef = coef, locus_tag = df_counts[[1]])
-    }
-  ) %>%
-    bind_rows() %>%
-    mutate(stat = NA) %>%
-    tidyr::separate(coef, into = c("factor", "reference"), sep = "\\_vs\\_") %>%
-    tidyr::separate(factor, into = c("factor", "condition"), sep = "\\_", extra = "merge")
-} else if (shrink && shrink_type == "normal") {
-  # results are obtained using contrasts in case of no shrinking
-  # or shrinking with method "normal"
+
+  messages <- append(messages, paste0(
+    "applying log2-FC shrinkage using method: ", shrink_type
+  ))
+
+  # relevel the factor of interest as the reference to extract all coefficients
   deseq_result <- df_comparison %>%
-    group_by(factor, condition, reference) %>%
-    group_split() %>%
-    lapply(function(comp) {
-      quiet_shrink(deseq_data,
-        contrast = c(comp$factor, comp$condition, comp$reference),
-        type = shrink_type,
-        parallel = TRUE, BPPARAM = MulticoreParam(n_cores)
-      )$result %>%
-        as_tibble() %>%
-        mutate(
-          factor = comp$factor,
-          condition = comp$condition,
-          reference = comp$reference,
-          locus_tag = df_counts[[1]]
-        )
+    dplyr::select(factor, reference) %>%
+    distinct() %>%
+    apply(1, function(ref) {
+      colData(deseq_data)[[ref[1]]] <- relevel(colData(deseq_data)[[ref[1]]], ref = ref[2])
+      deseq_data_releveled <- quiet_deseq(deseq_data)$result
+      coefs <- df_comparison %>%
+        filter(factor == ref[1], reference == ref[2]) %>%
+        mutate(coef = paste0(factor, "_", condition, "_vs_", reference)) %>%
+        pull(coef)
+      lapply(coefs, function(coef) {
+        quiet_shrink(
+          dds = deseq_data_releveled,
+          coef = coef,
+          type = shrink_type,
+          parallel = TRUE,
+          BPPARAM = MulticoreParam(n_cores)
+        )$result %>%
+          as_tibble() %>%
+          mutate(coef = coef, locus_tag = df_counts[[1]])
+      }) %>%
+        bind_rows() %>%
+        mutate(stat = NA) %>%
+        tidyr::separate(coef, into = c("factor", "reference"), sep = "\\_vs\\_") %>%
+        tidyr::separate(factor, into = c("factor", "condition"), sep = "\\_", extra = "merge")
     }) %>%
     bind_rows()
+  #
 } else {
-  messages <- append(messages, paste0(
-    "not applying shrinkage, using default DESeq2::results() with contrasts"
-  ))
+  # results are obtained using contrasts in case of no shrinking
+  # or shrinking with method "normal"
+
+  results_args <- list(
+    deseq_data,
+    parallel = TRUE,
+    BPPARAM = MulticoreParam(n_cores)
+  )
+
+  if (shrink) {
+    results_function <- quiet_shrink
+    results_args$type <- shrink_type
+    messages <- append(messages, paste0(
+      "applying log2-FC shrinkage using method: ", shrink_type
+    ))
+  } else {
+    results_function <- quiet_results
+    messages <- append(messages, "not applying log2-FC shrinkage")
+  }
+
   deseq_result <- df_comparison %>%
     group_by(factor, condition, reference) %>%
     group_split() %>%
     lapply(function(comp) {
-      DESeq2::results(deseq_data,
-        contrast = c(comp$factor, comp$condition, comp$reference),
-        parallel = TRUE, BPPARAM = MulticoreParam(n_cores)
-      ) %>%
+      do.call(
+        what = results_function,
+        args = c(
+          results_args,
+          list(contrast = c(comp$factor, comp$condition, comp$reference))
+        )
+      )$result %>%
         as_tibble() %>%
         mutate(
           factor = comp$factor,

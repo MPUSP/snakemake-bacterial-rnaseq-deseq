@@ -184,7 +184,6 @@ df_samples
 
 - comparisons are defined in the sample sheet using the `reference` column
 - each condition will be contrasted against all listed reference conditions in this column
-- note: redundant comparisons like A vs B and B vs A are not filtered, it can be meaningful to look at differences from both sides; these comparisons are only included when `shrinkage` is not applied with methods "apeglm" or "ashr"
 
 ```{r}
 df_comparison <- df_samples %>%
