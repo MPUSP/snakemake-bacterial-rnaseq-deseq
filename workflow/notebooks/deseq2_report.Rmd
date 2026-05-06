@@ -20,7 +20,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 # Background
 
 This report summarizes the results from running [DESeq2](https://bioconductor.org/packages/release/bioc/html/DESeq2.html),
-a package for the analysis of *differentially expressed* (DE) genes.
+a package for the analysis of _differentially expressed_ (DE) genes.
 The full analysis of RNA-Seq data was performed using two Snakemake workflows:
 
 1. [Snakemake workflow for bacterial RNA-Seq data processing](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing)
@@ -98,7 +98,7 @@ custom_theme <- function(
       panel.background = element_blank(),
       strip.background = element_blank(),
       strip.text = element_text(
-        colour = grey(0.4), size = 10, 
+        colour = grey(0.4), size = 10,
         margin = margin(3, 3, 3, 3)
       ),
       legend.text = element_text(colour = grey(0.4), size = 10),
@@ -139,7 +139,6 @@ save_plot <- function(
 - imported samplesheet `r snakemake@input[["samplesheet"]]`
 - imported DESeq2 results raw data `r snakemake@input[["deseq_data"]]`
 - imported DESeq2 results table `r snakemake@input[["deseq_results"]]`
-
 
 ```{r}
 df_samples <- read_tsv(snakemake@input[["samplesheet"]], show_col_types = FALSE)
@@ -201,19 +200,21 @@ df_comparison <- df_samples %>%
 df_comparison
 ```
 
-### Principal component analysis (PCA)
+### Sample correlation
+
+#### Principal component analysis (PCA)
 
 - this figure shows sample similarity between conditions
-- PCA reduces the multidimensional data to 3 main dimensions
-- based on the `baseMean` information from DESeq2
-- plotted are principal component 1 (x-axis), 2 (y-axis) and 3 (point size)
+- PCA reduces the multidimensional data to 2 main dimensions
+- based on variant-stabilized (VST transformed) count data from DESeq2
+- plotted are principal components 1 (x-axis) and 2 (y-axis)
 - similar conditions should cluster together
 - outliers should be easily visible
 
-```{r, fig.width = 7, fig.height = 7}
-df_pca <- tryCatch(
+```{r}
+data_vst <- tryCatch(
   {
-    plotPCA(vst(deseq_data, nsub = 10), intgroup = "condition", returnData = TRUE)
+    vst(deseq_data)
   },
   error = function(e) {
     if (grepl("gene-wise dispersion estimates are within 2 orders of magnitude", e$message)) {
@@ -222,15 +223,19 @@ df_pca <- tryCatch(
       dds <- estimateSizeFactors(deseq_data)
       # shifted log of normalized counts
       se <- SummarizedExperiment(log2(counts(dds, normalized=TRUE) + 1), colData=colData(dds))
-      plotPCA(DESeqTransform(se), intgroup = "condition", returnData = TRUE)
+      DESeqTransform(se)
     } else {
-      message("PCA with nsub = 10 failed, retrying with nsub = 1")
-      plotPCA(vst(deseq_data, nsub = 1), intgroup = "condition", returnData = TRUE)
+      message("Variant stabilization failed, retrying with lower subset of genes")
+      vst(deseq_data, nsub = 100)
     }
   }
 )
+```
 
+```{r, fig.width = 7, fig.height = 7}
+df_pca <- plotPCA(data_vst, intgroup = "condition", returnData = TRUE)
 plot_pca <- df_pca %>%
+  mutate(condition = fct_inorder(condition)) %>%
   ggplot(aes(x = PC1, y = PC2, color = condition, label = name)) +
   geom_point(alpha = 0.8) +
   geom_text(
@@ -240,7 +245,7 @@ plot_pca <- df_pca %>%
   ) +
   labs(
     title = "PCA, first two principal components",
-    subtitle = "Point size: PC3, color: condition, number: replicate.", x = "PC1", y = "PC2"
+    subtitle = "Color: condition, labels: sample name.", x = "PC1", y = "PC2"
   ) +
   custom_theme(legend.position = "bottom", aspect.ratio = 1) +
   scale_color_manual(values = colorRampPalette(custom_colors)(length(unique(df_pca$condition))))
@@ -249,12 +254,82 @@ save_plot(plot_pca, width = 7, height = 7)
 print(plot_pca)
 ```
 
+#### Correlation coefficient
+
+- this figure shows sample similarity between conditions
+- based on variant-stabilized (VST transformed) count data from DESeq2
+- plotted is the Pearson correlation between all samples (-1 <= x <= 1)
+- higher values mean more similar samples
+- similar conditions should show a higher degree of correlation
+
+```{r, fig.width = 7, fig.height = 7}
+df_cor <- cor(assay(data_vst), method = "pearson") %>%
+  as_tibble(rownames = "sample1") %>%
+  pivot_longer(cols = -sample1, names_to = "sample2", values_to = "correlation")
+
+max_reps <- length(unique(df_samples$replicate))
+
+plot_cor <- df_cor %>%
+  ggplot(aes(x = sample1, y = sample2, fill = correlation)) +
+  geom_tile() +
+  geom_hline(yintercept = seq(0.5, nrow(df_samples) + 0.5, by = max_reps), colour = grey(0.9)) +
+  geom_vline(xintercept = seq(0.5, nrow(df_samples) + 0.5, by = max_reps), colour = grey(0.9)) +
+  geom_text(
+    size = 3 + 1 / nrow(df_samples),
+    color = grey(0.4),
+    aes(label = round(correlation, 2))
+  ) +
+  labs(
+    title = "Sample correlation",
+    subtitle = "Pearson correlation of VST transformed counts.",
+    x = "", y = ""
+  ) +
+  custom_theme(legend.position = "bottom", aspect.ratio = 1) +
+  scale_fill_gradientn(colours = custom_range(100, quantitative = TRUE)) +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, size = 8),
+    axis.text.y = element_text(size = 8)
+  ) +
+  # wider legend
+  guides(fill = guide_colorbar(barwidth = 10, barheight = 0.5))
+
+save_plot(plot_cor, width = figwidth, height = figheight)
+print(plot_cor)
+```
+
+### Size factors
+
+- size factors are used to account for **differences in sequencing depth** and RNA composition between samples, in other words, different library sizes
+- size factors are used by DESeq2 to normalize read counts between samples
+- size factors are calculated by DESeq2 based on the median ratio of gene counts relative to a pseudo-reference sample
+
+```{r, fig.width = 7, fig.height = 6}
+plot_size_factors <- estimateSizeFactors(deseq_data) %>%
+  sizeFactors() %>%
+  enframe(name = "sample", value = "sizeFactor") %>%
+  left_join(df_samples, by = join_by(sample)) %>%
+  mutate(condition = fct_inorder(condition)) %>%
+  ggplot(aes(x = fct_inorder(sample), y = sizeFactor, color = condition)) +
+  geom_col(fill = "white") +
+  labs(
+    title = "Size factors",
+    subtitle = "Size factors calculated by DESeq2 for normalization.",
+    x = "", y = ""
+  ) +
+  custom_theme(legend.position = "bottom") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  scale_color_manual(values = colorRampPalette(custom_colors)(length(unique(df_deseq$condition))))
+
+save_plot(plot_size_factors, width = 7, height = 7)
+print(plot_size_factors)
+```
+
 ### Volcano plot, conditions {.tabset}
 
 - shows all genes as dots
 - x-axis: log2 fold change (DESeq2 column `log2FoldChange`)
 - y-axis: -log10 adjusted p-value (DESeq2 column `padj`)
-- the order of comparisons is *condition* ~ *reference*
+- the order of comparisons is _condition_ ~ _reference_
 - for example `log2FC = 1` means that condition is twice as high as reference
 
 ```{r}
@@ -359,7 +434,7 @@ for (comp in comparisons) {
 - shows all genes as dots
 - x-axis: log2 fold change (DESeq2 column `log2FoldChange`)
 - y-axis: -log10 adjusted p-value (DESeq2 column `padj`)
-- the order of comparisons is *condition* ~ *reference*
+- the order of comparisons is _condition_ ~ _reference_
 - for example `log2FC = 1` means that condition is twice as high as reference
 
 **OVERVIEW REPLICATES**
@@ -399,7 +474,7 @@ for (comp in replicates) {
 - shows all genes as dots
 - x-axis: mean expression across all samples (DESeq2 column `baseMean`)
 - y-axis: log2 fold change (DESeq2 column `log2FoldChange`)
-- how the MA plot is interpreted: 
+- how the MA plot is interpreted:
   - points high y-values are probably differentially expressed
   - points with low x-values have low expression and are less reliable
 
@@ -467,7 +542,7 @@ for (comp in comparisons) {
 - shows all genes as dots
 - x-axis: mean expression across all samples (DESeq2 column `baseMean`)
 - y-axis: log2 fold change (DESeq2 column `log2FoldChange`)
-- how the MA plot is interpreted: 
+- how the MA plot is interpreted:
   - points high y-values are probably differentially expressed
   - points with low x-values have low expression and are less reliable
 
