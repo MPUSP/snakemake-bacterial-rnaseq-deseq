@@ -1,13 +1,18 @@
 # snakemake-bacterial-rnaseq-deseq
 
 [![Snakemake](https://img.shields.io/badge/snakemake-≥8.0.0-brightgreen.svg)](https://snakemake.github.io)
-[![Tests](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/actions/workflows/main.yml/badge.svg)](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/actions/workflows/main.yml)
+[![GitHub actions](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/actions/workflows/snakemake-tests.yml/badge.svg)](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/workflows/snakemake-tests.yml)
 [![run with conda](http://img.shields.io/badge/run%20with-conda-3EB049?labelColor=000000&logo=anaconda)](https://docs.conda.io/en/latest/)
-[![workflow catalog](https://img.shields.io/badge/Snakemake%20workflow%20catalog-darkgreen)](https://snakemake.github.io/snakemake-workflow-catalog)
+[![run with apptainer](https://img.shields.io/badge/run_with-apptainer-darkblue)](https://apptainer.org/docs/user/latest/)
+[![workflow catalog](https://img.shields.io/badge/Snakemake%20workflow%20catalog-darkgreen)](https://snakemake.github.io/snakemake-workflow-catalog/docs/workflows/MPUSP/snakemake-bacterial-rnaseq-deseq.html)
 
 ---
 
 A Snakemake workflow for **RNA-Seq differential gene expression analysis** using [**DESeq2**](https://doi.org/10.1186/s13059-014-0550-8).
+
+This workflow performs a follow-up analysis on the results from the [**snakemake-bacterial-rnaseq-processing**](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing) workflow, which it imports as a [snakemake module](https://snakemake.readthedocs.io/en/latest/snakefiles/modularization.html#).
+The first workflow processes and maps raw RNA-Seq reads and generates a table of read counts per gene.
+The second workflow uses this table to perform the DE analysis with DESeq2.
 
 - [snakemake-bacterial-rnaseq-deseq](#snakemake-bacterial-rnaseq-deseq)
   - [Usage](#usage)

@@ -5,18 +5,21 @@ suppressWarnings({
     library(tibble)
     library(dplyr)
     library(tidyr)
+    library(stringr)
     library(DESeq2)
     library(BiocParallel)
   })
 })
 
 # parameters
-counts_file <- snakemake@input[["counts_protein_coding"]]
+counts_file <- snakemake@input[["counts_filtered"]]
 samplesheet_file <- snakemake@input[["samplesheet"]]
 genome_gff <- snakemake@input[["gff"]]
 deseq_results_file <- snakemake@output[["deseq_results"]]
 deseq_data_file <- snakemake@output[["deseq_data"]]
 design <- snakemake@config$deseq2$design
+shrink <- snakemake@config$deseq2$lfc_shrinkage
+shrink_type <- snakemake@config$deseq2$lfc_shrinkage_type
 n_cores <- snakemake@threads
 threshold_pval <- snakemake@config$deseq2$threshold_pval
 if (is.null(threshold_pval) || is.na(threshold_pval)) threshold_pval <- 0.05
@@ -28,14 +31,8 @@ messages <- c()
 df_counts <- read_csv(counts_file, show_col_types = FALSE)
 annot_cols <- intersect(c("locus_tag", "old_locus_tag", "trivial_name", "gene_biotype"), colnames(df_counts))
 df_annotation <- dplyr::select(df_counts, all_of(annot_cols))
-df_sample <- read_table(samplesheet_file, show_col_types = FALSE) %>%
+df_sample <- read_tsv(samplesheet_file, show_col_types = FALSE) %>%
   mutate(replicate = as.character(replicate))
-
-metadata <- data.frame(
-  condition = factor(df_sample$condition, unique(df_sample$condition)),
-  replicate = factor(df_sample$replicate, unique(df_sample$replicate)),
-  row.names = setdiff(colnames(df_counts), annot_cols)
-)
 
 # check that the order of file names corresponds to colnames of counts
 if (!all(colnames(dplyr::select(df_counts, -any_of(annot_cols))) == df_sample$sample)) {
@@ -46,12 +43,18 @@ if (!all(colnames(dplyr::select(df_counts, -any_of(annot_cols))) == df_sample$sa
 }
 df_counts <- df_counts[c("locus_tag", df_sample$sample)]
 
+metadata <- data.frame(
+  condition = factor(df_sample$condition, unique(df_sample$condition)),
+  replicate = factor(df_sample$replicate, unique(df_sample$replicate)),
+  row.names = setdiff(colnames(df_counts), annot_cols)
+)
+
 # check study design
 n_conditions <- length(levels(metadata$condition))
 n_replicates <- length(levels(metadata$replicate))
 for (fact in c("condition", "replicate")) {
-  if (grepl(fact, design) & get(paste0("n_", fact, "s")) <= 1) {
-    stop("found less than 2 ", fact, "s: can not use a design which contains '~ ", fact,"'.")
+  if (grepl(fact, design) && get(paste0("n_", fact, "s")) <= 1) {
+    stop("found less than 2 ", fact, "s: can not use a design which contains '~ ", fact, "'.")
   }
 }
 
@@ -91,17 +94,31 @@ if (grepl("replicate", design)) {
     df_comparison,
     df_sample %>%
       pull(replicate) %>%
-      tidyr::crossing(. , .) %>%
+      tidyr::crossing(., .) %>%
       setNames(c("condition", "reference")) %>%
       distinct() %>%
       filter(!condition == reference) %>%
       mutate(factor = "replicate")
-    )
+  )
   messages <- append(messages, paste0(
     "making ", nrow(filter(df_comparison, factor == "replicate")),
     " comparisons by contrasting all replicates against each other"
   ))
 }
+
+# check that conditions and references do not contain the string '_vs_'
+if (
+  grepl("condition", design) &&
+    nrow(filter(df_comparison, if_any(c(condition, reference), ~ str_detect(., "_vs_"))))
+) {
+  stop("found string '_vs_' in condition or reference names, which is not allowed")
+}
+
+# define quiet wrappers
+quiet_deseq <- purrr::quietly(DESeq2::DESeq)
+quiet_shrink <- purrr::quietly(DESeq2::lfcShrink)
+quiet_results <- purrr::quietly(DESeq2::results)
+
 
 # DESeq data set
 deseq_data <- DESeqDataSetFromMatrix(
@@ -109,27 +126,95 @@ deseq_data <- DESeqDataSetFromMatrix(
   colData = metadata,
   design = formula(design)
 ) %>%
-  DESeq()
+  quiet_deseq()
 
-# call DESeq2's `results()` function with pairs of
-# contrasts like `contrast("variable", "level1", "level2")`
-deseq_result <- df_comparison %>%
-  group_by(factor, condition, reference) %>%
-  group_split() %>%
-  lapply(function(comp) {
-    DESeq2::results(deseq_data,
-      contrast = c(comp$factor, comp$condition, comp$reference),
-      parallel = TRUE, BPPARAM = MulticoreParam(n_cores)
-    ) %>%
-      as_tibble() %>%
-      mutate(
-        factor = comp$factor,
-        reference = comp$reference,
-        condition = comp$condition,
-        locus_tag = df_counts[[1]]
-      )
-  }) %>%
-  bind_rows()
+messages <- append(messages, deseq_data$messages)
+deseq_data <- deseq_data$result
+
+
+# get DESeq2 results
+if (shrink && shrink_type %in% c("apeglm", "ashr")) {
+  # results are obtained using coefficients in case of shrinking
+  # with methods "apeglm" or "ashr"
+
+  messages <- append(messages, paste0(
+    "applying log2-FC shrinkage using method: ", shrink_type
+  ))
+
+  # relevel the factor of interest as the reference to extract all coefficients
+  deseq_result <- df_comparison %>%
+    dplyr::select(factor, reference) %>%
+    distinct() %>%
+    apply(1, function(ref) {
+      colData(deseq_data)[[ref[1]]] <- relevel(colData(deseq_data)[[ref[1]]], ref = ref[2])
+      deseq_data_releveled <- quiet_deseq(deseq_data)$result
+      coefs <- df_comparison %>%
+        filter(factor == ref[1], reference == ref[2]) %>%
+        mutate(across(c(condition, reference), ~ str_replace_all(., "\\-", "."))) %>%
+        mutate(coef = paste0(factor, "_", condition, "_vs_", reference)) %>%
+        pull(coef)
+      lapply(coefs, function(coef) {
+        quiet_shrink(
+          dds = deseq_data_releveled,
+          coef = coef,
+          type = shrink_type,
+          parallel = TRUE,
+          BPPARAM = MulticoreParam(n_cores)
+        )$result %>%
+          as_tibble() %>%
+          mutate(coef = coef, locus_tag = df_counts[[1]])
+      }) %>%
+        bind_rows() %>%
+        mutate(stat = NA) %>%
+        tidyr::separate(coef, into = c("factor", "reference"), sep = "\\_vs\\_") %>%
+        tidyr::separate(factor, into = c("factor", "condition"), sep = "\\_", extra = "merge") %>%
+        mutate(across(c(condition, reference), ~ str_replace_all(., "\\.", "-")))
+    }) %>%
+    bind_rows()
+  #
+} else {
+  # results are obtained using contrasts in case of no shrinking
+  # or shrinking with method "normal"
+
+  results_args <- list(
+    deseq_data,
+    parallel = TRUE,
+    BPPARAM = MulticoreParam(n_cores)
+  )
+
+  if (shrink) {
+    results_function <- quiet_shrink
+    results_args$type <- shrink_type
+    messages <- append(messages, paste0(
+      "applying log2-FC shrinkage using method: ", shrink_type
+    ))
+  } else {
+    results_function <- quiet_results
+    messages <- append(messages, "not applying log2-FC shrinkage")
+  }
+
+  deseq_result <- df_comparison %>%
+    group_by(factor, condition, reference) %>%
+    group_split() %>%
+    lapply(function(comp) {
+      do.call(
+        what = results_function,
+        args = c(
+          results_args,
+          list(contrast = c(comp$factor, comp$condition, comp$reference))
+        )
+      )$result %>%
+        as_tibble() %>%
+        mutate(
+          factor = comp$factor,
+          condition = comp$condition,
+          reference = comp$reference,
+          locus_tag = df_counts[[1]]
+        )
+    }) %>%
+    bind_rows()
+}
+
 
 # slightly reformat df
 deseq_result <- deseq_result %>%

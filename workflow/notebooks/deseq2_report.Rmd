@@ -20,7 +20,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 # Background
 
 This report summarizes the results from running [DESeq2](https://bioconductor.org/packages/release/bioc/html/DESeq2.html),
-a package for the analysis of *differentially expressed* (DE) genes.
+a package for the analysis of _differentially expressed_ (DE) genes.
 The full analysis of RNA-Seq data was performed using two Snakemake workflows:
 
 1. [Snakemake workflow for bacterial RNA-Seq data processing](https://github.com/MPUSP/snakemake-bacterial-rnaseq-processing)
@@ -98,7 +98,7 @@ custom_theme <- function(
       panel.background = element_blank(),
       strip.background = element_blank(),
       strip.text = element_text(
-        colour = grey(0.4), size = 10, 
+        colour = grey(0.4), size = 10,
         margin = margin(3, 3, 3, 3)
       ),
       legend.text = element_text(colour = grey(0.4), size = 10),
@@ -140,11 +140,25 @@ save_plot <- function(
 - imported DESeq2 results raw data `r snakemake@input[["deseq_data"]]`
 - imported DESeq2 results table `r snakemake@input[["deseq_results"]]`
 
-
 ```{r}
 df_samples <- read_tsv(snakemake@input[["samplesheet"]], show_col_types = FALSE)
 df_deseq <- read_csv(snakemake@input[["deseq_results"]], show_col_types = FALSE) %>%
-  mutate(significance = factor(significance, levels = c("significant", "not significant")))
+  mutate(significance = factor(significance, levels = c("significant", "not significant"))) %>%
+  filter(if_any(all_of(c("log2FoldChange", "lfcSE", "stat", "pvalue")), ~ !is.na(.x))) %>%
+  arrange(factor, condition, reference, locus_tag)
+
+# check that trivial names exist and add suffixes to duplicated entries
+if (!"trivial_name" %in% colnames(df_deseq)) {
+  df_deseq$trivial_name <- df_deseq$locus_tag
+}
+df_deseq <- df_deseq %>%
+  group_by(condition, reference, trivial_name) %>%
+  mutate(trivial_name = case_when(
+    n() > 1 ~ paste0(trivial_name, "_", row_number()),
+    .default = trivial_name
+  )) %>%
+  ungroup()
+
 load(snakemake@input[["deseq_data"]])
 
 threshold_pval <- snakemake@config$deseq2$threshold_pval
@@ -169,35 +183,61 @@ df_samples
 
 - comparisons are defined in the sample sheet using the `reference` column
 - each condition will be contrasted against all listed reference conditions in this column
-- note: redundant comparisons like A vs B and B vs A are not filtered, it can be meaningful to look at differences from both sides
 
 ```{r}
 df_comparison <- df_samples %>%
   filter(!is.na(reference)) %>%
   dplyr::select(condition, reference) %>%
-  distinct() %>%
   tidyr::separate_longer_delim(reference, delim = ",") %>%
-  distinct() %>%
   filter(!condition == reference) %>%
   group_by(condition, reference) %>%
-  dplyr::summarize(`number of replicates` = n(), .groups = "drop")
+  dplyr::summarize(`number of replicates` = n(), .groups = "drop") %>%
+  inner_join(
+    dplyr::select(df_deseq, condition, reference) %>% distinct(),
+    by = join_by(condition, reference)
+  )
 
 df_comparison
 ```
 
-### Principal component analysis (PCA)
+### Sample correlation
+
+#### Principal component analysis (PCA)
 
 - this figure shows sample similarity between conditions
-- PCA reduces the multidimensional data to 3 main dimensions
-- based on the `baseMean` information from DESeq2
-- plotted are principal component 1 (x-axis), 2 (y-axis) and 3 (point size)
+- PCA reduces the multidimensional data to 2 main dimensions
+- based on variant-stabilized (VST transformed) count data from DESeq2
+- plotted are principal components 1 (x-axis) and 2 (y-axis)
 - similar conditions should cluster together
 - outliers should be easily visible
 
+```{r}
+data_vst <- tryCatch(
+  {
+    vst(deseq_data)
+  },
+  error = function(e) {
+    if (grepl("gene-wise dispersion estimates are within 2 orders of magnitude", e$message)) {
+      message("Dispersion estimation failed, likely due to low number of genes/conditions. Retrying alternative method.")
+      # perform custom transformation, from DESeq2 help section.
+      dds <- estimateSizeFactors(deseq_data)
+      # shifted log of normalized counts
+      se <- SummarizedExperiment(log2(counts(dds, normalized=TRUE) + 1), colData=colData(dds))
+      DESeqTransform(se)
+    } else {
+      message("Variant stabilization failed, retrying with lower subset of genes")
+      vst(deseq_data, nsub = 100)
+    }
+  }
+)
+```
+
 ```{r, fig.width = 7, fig.height = 7}
-df_pca <- plotPCA(vst(deseq_data, nsub = 100), intgroup = "condition", returnData = TRUE)
+df_pca <- plotPCA(data_vst, intgroup = "condition", returnData = TRUE)
+percent_var <- round(100 * attr(df_pca, "percentVar"))
 
 plot_pca <- df_pca %>%
+  mutate(condition = fct_inorder(condition)) %>%
   ggplot(aes(x = PC1, y = PC2, color = condition, label = name)) +
   geom_point(alpha = 0.8) +
   geom_text(
@@ -207,13 +247,85 @@ plot_pca <- df_pca %>%
   ) +
   labs(
     title = "PCA, first two principal components",
-    subtitle = "Point size: PC3, color: condition, number: replicate.", x = "PC1", y = "PC2"
+    subtitle = "Color: condition, labels: sample name.",
+    x = paste0("PC1 (", percent_var[1], "% variance)"),
+    y = paste0("PC2 (", percent_var[2], "% variance)")
   ) +
   custom_theme(legend.position = "bottom", aspect.ratio = 1) +
-  scale_color_manual(values = colorRampPalette(custom_colors)(length(unique(df_pca$condition))))
+  scale_color_manual(values = custom_range(length(unique(df_pca$condition))))
 
 save_plot(plot_pca, width = 7, height = 7)
 print(plot_pca)
+```
+
+#### Correlation coefficient
+
+- this figure shows sample similarity between conditions
+- based on variant-stabilized (VST transformed) count data from DESeq2
+- plotted is the Pearson correlation between all samples (-1 <= x <= 1)
+- higher values mean more similar samples
+- similar conditions should show a higher degree of correlation
+
+```{r, fig.width = 7, fig.height = 7}
+df_cor <- cor(assay(data_vst), method = "pearson") %>%
+  as_tibble(rownames = "sample1") %>%
+  pivot_longer(cols = -sample1, names_to = "sample2", values_to = "correlation")
+
+max_reps <- length(unique(df_samples$replicate))
+
+plot_cor <- df_cor %>%
+  ggplot(aes(x = sample1, y = sample2, fill = correlation)) +
+  geom_tile() +
+  geom_hline(yintercept = seq(0.5, nrow(df_samples) + 0.5, by = max_reps), colour = grey(0.9)) +
+  geom_vline(xintercept = seq(0.5, nrow(df_samples) + 0.5, by = max_reps), colour = grey(0.9)) +
+  geom_text(
+    size = 3 + 1 / nrow(df_samples),
+    color = grey(0.4),
+    aes(label = round(correlation, 2))
+  ) +
+  labs(
+    title = "Sample correlation",
+    subtitle = "Pearson correlation of VST transformed counts.",
+    x = "", y = ""
+  ) +
+  custom_theme(legend.position = "bottom", aspect.ratio = 1) +
+  scale_fill_gradientn(colours = custom_range(100, quantitative = TRUE)) +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, size = 8),
+    axis.text.y = element_text(size = 8)
+  ) +
+  # wider legend
+  guides(fill = guide_colorbar(barwidth = 10, barheight = 0.5))
+
+save_plot(plot_cor, width = figwidth, height = figheight)
+print(plot_cor)
+```
+
+### Size factors
+
+- size factors are used to account for **differences in sequencing depth** and RNA composition between samples, in other words, different library sizes
+- size factors are used by DESeq2 to normalize read counts between samples
+- size factors are calculated by DESeq2 based on the median ratio of gene counts relative to a pseudo-reference sample
+
+```{r, fig.width = 7, fig.height = 6}
+plot_size_factors <- estimateSizeFactors(deseq_data) %>%
+  sizeFactors() %>%
+  enframe(name = "sample", value = "sizeFactor") %>%
+  left_join(df_samples, by = join_by(sample)) %>%
+  mutate(condition = fct_inorder(condition)) %>%
+  ggplot(aes(x = fct_inorder(sample), y = sizeFactor, color = condition)) +
+  geom_col(fill = "white") +
+  labs(
+    title = "Size factors",
+    subtitle = "Size factors calculated by DESeq2 for normalization.",
+    x = "", y = ""
+  ) +
+  custom_theme(legend.position = "bottom") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  scale_color_manual(values = custom_range(length(unique(df_deseq$condition))))
+
+save_plot(plot_size_factors, width = 7, height = 7)
+print(plot_size_factors)
 ```
 
 ### Volcano plot, conditions {.tabset}
@@ -221,7 +333,7 @@ print(plot_pca)
 - shows all genes as dots
 - x-axis: log2 fold change (DESeq2 column `log2FoldChange`)
 - y-axis: -log10 adjusted p-value (DESeq2 column `padj`)
-- the order of comparisons is *condition* ~ *reference*
+- the order of comparisons is _condition_ ~ _reference_
 - for example `log2FC = 1` means that condition is twice as high as reference
 
 ```{r}
@@ -236,6 +348,14 @@ replicates <- df_samples %>%
   setNames(c("condition", "reference")) %>%
   distinct() %>%
   filter(!condition == reference) %>%
+  inner_join(
+    df_deseq %>%
+    filter(factor == "replicate") %>%
+    dplyr::select(condition, reference) %>%
+    mutate(across(everything(), as.numeric)) %>%
+    distinct(),
+    by = join_by(condition, reference)
+  ) %>%
   group_by(condition, reference) %>%
   group_split()
 
@@ -244,7 +364,12 @@ get_limit_fc <- function(df) {
 }
 
 get_limit_pv <- function(df) {
-  if (max(-log10(df$padj)) > 3) {c(0, max(-log10(df$padj)))} else {c(0, 3)}
+  df <- filter(df, padj > 0)
+  if (nrow(df) == 0) {
+    return(c(0, 3))
+  }
+  max_pv <- max(-log10(df$padj), na.rm = TRUE)
+  if (is.finite(max_pv) && max_pv > 3) {c(0, max_pv)} else {c(0, 3)}
 }
 
 get_limit_bm <- function(df) {
@@ -253,8 +378,8 @@ get_limit_bm <- function(df) {
 
 volcano_plot <- function(df) {
   ggplot(df, aes(x = log2FoldChange, y = -log10(padj), color = significance, label = trivial_name)) +
-    geom_point(alpha = 0.6, size = 1) +
-    geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 10) +
+    geom_point(alpha = 0.6, size = 1, show.legend = TRUE) +
+    geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 20) +
     labs(
       title = "Volcano Plot",
       subtitle = paste0("significance: p ≤ ", threshold_pval, ", log2FC ≥ ", threshold_log2fc),
@@ -272,7 +397,7 @@ volcano_plot <- function(df) {
     ) +
     facet_wrap(~ paste0(condition, " ~ ", reference)) +
     custom_theme(legend.position = "bottom", aspect.ratio = 1) +
-    scale_color_manual(values = custom_colors[c(1, 5)])
+    scale_color_manual(values = custom_colors[c(1, 5)], drop = FALSE)
 }
 ```
 
@@ -313,7 +438,7 @@ for (comp in comparisons) {
 - shows all genes as dots
 - x-axis: log2 fold change (DESeq2 column `log2FoldChange`)
 - y-axis: -log10 adjusted p-value (DESeq2 column `padj`)
-- the order of comparisons is *condition* ~ *reference*
+- the order of comparisons is _condition_ ~ _reference_
 - for example `log2FC = 1` means that condition is twice as high as reference
 
 **OVERVIEW REPLICATES**
@@ -353,15 +478,15 @@ for (comp in replicates) {
 - shows all genes as dots
 - x-axis: mean expression across all samples (DESeq2 column `baseMean`)
 - y-axis: log2 fold change (DESeq2 column `log2FoldChange`)
-- how the MA plot is interpreted: 
+- how the MA plot is interpreted:
   - points high y-values are probably differentially expressed
   - points with low x-values have low expression and are less reliable
 
 ```{r}
 ma_plot <- function(df) {
   ggplot(df, aes(x = baseMean, y = log2FoldChange, color = significance, label = trivial_name)) +
-    geom_point(alpha = 0.6, size = 1) +
-    geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 10) +
+    geom_point(alpha = 0.6, size = 1, show.legend = TRUE) +
+    geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 20) +
     labs(
       title = "MA Plot",
       subtitle = paste0("significance: p ≤ ", threshold_pval, ", log2FC ≥ ", threshold_log2fc),
@@ -372,10 +497,7 @@ ma_plot <- function(df) {
       x = get_limit_bm(filter(df_deseq, factor == unique(df$factor))),
       y = get_limit_fc(filter(df_deseq, factor == unique(df$factor)))
     ) +
-    scale_x_continuous(
-      # limits = NULL,
-      transform = "log10"
-    ) +
+    scale_x_continuous(transform = "log10") +
     theme(
       legend.title = element_blank(),
       legend.position = "bottom",
@@ -383,7 +505,7 @@ ma_plot <- function(df) {
     ) +
     facet_wrap(~ paste0(condition, " ~ ", reference)) +
     custom_theme(legend.position = "bottom", aspect.ratio = 1) +
-    scale_color_manual(values = custom_colors[c(1, 5)])
+    scale_color_manual(values = custom_colors[c(1, 5)], drop = FALSE)
 }
 ```
 
@@ -424,7 +546,7 @@ for (comp in comparisons) {
 - shows all genes as dots
 - x-axis: mean expression across all samples (DESeq2 column `baseMean`)
 - y-axis: log2 fold change (DESeq2 column `log2FoldChange`)
-- how the MA plot is interpreted: 
+- how the MA plot is interpreted:
   - points high y-values are probably differentially expressed
   - points with low x-values have low expression and are less reliable
 
@@ -457,6 +579,135 @@ for (comp in replicates) {
     plot_ma, width = 8, height = 8,
     index = paste0(comp$condition, "_vs_", comp$reference)
   )
+}
+```
+
+### Heat map, top genes by condition
+
+- shows the top differentially expressed genes by log2 fold change p-value
+- the plot is restricted to the top 100 items by maximum of absolute fold change
+- genes are clustered by similarity
+- tiles: log2 fold change (DESeq2 column `log2FoldChange`)
+
+```{r}
+# import function fct_cluster from R package R-tools
+source("https://raw.githubusercontent.com/m-jahn/R-tools/refs/heads/master/R/fct_cluster.R")
+
+heat_map <- function(df) {
+  df <- df %>%
+    group_by(locus_tag) %>%
+    mutate(max_log2FC = max(abs(log2FoldChange))) %>%
+    group_by(factor, reference, condition) %>%
+    arrange(desc(max_log2FC)) %>%
+    dplyr::slice(1:100) %>%
+    ungroup() %>%
+    mutate(
+      comparison = paste0(condition, " ~ ", reference),
+      comparison = factor(comparison, sort(unique(comparison))),
+      log2FoldChange = log2FoldChange %>% replace(., . > 4, 4) %>% replace(., . < -4, -4),
+      trivial_name = substr(trivial_name, 1, 18)
+    )
+  if (length(unique(df$trivial_name)) > 1) {
+    df <- df %>%
+      mutate(
+        trivial_name = fct_cluster(trivial_name, comparison, log2FoldChange)
+      )
+  }
+  df %>%
+    ggplot(aes(x = trivial_name, y = comparison, fill = log2FoldChange)) +
+    geom_tile() +
+    labs(
+      x = "", y = "",
+      title = "Heat map of top N differentially expressed genes.",
+      subtitle = "Color: log2 fold change (capped to -4 to 4), x: gene, y: comparison.",
+    ) +
+    custom_theme(legend.position = "bottom", aspect.ratio = 1) +
+    theme(
+      legend.title = element_blank(),
+      legend.position = "bottom",
+      aspect.ratio = 1,
+      axis.ticks.x = element_blank(),
+      axis.ticks.y = element_blank(),
+      axis.text.x = element_text(angle = 90, vjust = 0.5, size = 6),
+      axis.text.y = element_text(size = 6)
+    ) +
+    scale_fill_gradientn(colours = c(custom_colors[1], grey(0.9), custom_colors[2]),
+      limits = c(-4, 4))
+}
+```
+
+**DOWN-REGULATED**
+
+```{r, fig.width = 8, fig.height = 8}
+df_hm <- df_deseq %>%
+  filter(factor == "condition") %>%
+  group_by(locus_tag) %>%
+  filter(any(log2FoldChange <= -threshold_log2fc & padj <= threshold_pval))
+
+if (nrow(df_hm) > 0) {
+  plot_heat_map_conditions_down <- heat_map(df_hm)
+  print(plot_heat_map_conditions_down)
+  save_plot(plot_heat_map_conditions_down, width = 8, height = 8)
+} else {
+  print("No significantly changed genes were found.")
+}
+```
+
+**UP-REGULATED**
+
+```{r, fig.width = 8, fig.height = 8}
+df_hm <- df_deseq %>%
+  filter(factor == "condition") %>%
+  group_by(locus_tag) %>%
+  filter(any(log2FoldChange >= threshold_log2fc & padj <= threshold_pval))
+
+if (nrow(df_hm) > 0) {
+  plot_heat_map_conditions_up <- heat_map(df_hm)
+  print(plot_heat_map_conditions_up)
+  save_plot(plot_heat_map_conditions_up, width = 8, height = 8)
+} else {
+  print("No significantly changed genes were found.")
+}
+```
+
+### Heat map, top genes by replicate
+
+- shows the top differentially expressed genes by log2 fold change p-value
+- the plot is restricted to the top 100 items by maximum of absolute fold change
+- genes are clustered by similarity
+- tiles: log2 fold change (DESeq2 column `log2FoldChange`)
+
+**DOWN-REGULATED**
+
+```{r, fig.width = 8, fig.height = 8}
+df_hm <- df_deseq %>%
+  filter(factor == "replicate") %>%
+  group_by(locus_tag) %>%
+  filter(any(log2FoldChange <= -threshold_log2fc & padj <= threshold_pval))
+
+if (nrow(df_hm) > 0) {
+  plot_heat_map_replicates_down <- heat_map(df_hm)
+  print(plot_heat_map_replicates_down)
+  save_plot(plot_heat_map_replicates_down, width = 8, height = 8)
+} else {
+  print("No significantly changed genes were found.")
+}
+```
+
+**UP-REGULATED**
+
+```{r, fig.width = 8, fig.height = 8}
+df_hm <- df_deseq %>%
+  filter(factor == "replicate") %>%
+  group_by(locus_tag) %>%
+  filter(any(log2FoldChange >= threshold_log2fc & padj <= threshold_pval))
+
+if (nrow(df_hm) > 0) {
+  plot_heat_map_replicates_up <- heat_map(df_hm)
+  print(plot_heat_map_replicates_up)
+  save_plot(plot_heat_map_replicates_up, width = 8, height = 8)
+} else {
+  print("No significantly changed genes were found.")
 }
 ```
 

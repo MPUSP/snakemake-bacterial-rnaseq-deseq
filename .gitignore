@@ -7,4 +7,5 @@ logs/**
 .test/data/*
 .test/.snakemake/*
 .test/config/samplesheet/*
+.vscode/*
 config/samplesheet/*

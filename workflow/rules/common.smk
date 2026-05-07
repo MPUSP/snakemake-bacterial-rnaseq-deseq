@@ -1,7 +1,6 @@
 import pandas as pd
 from snakemake.utils import validate
 
-
 # read sample sheet
 # -----------------------------------------------------
 na_values = ["", "NaN", "nan", "null", "-"]
@@ -21,4 +20,3 @@ validate(config, schema="../../config/schemas/config.schema.yml")
 
 wildcard_constraints:
     sample="|".join(samples.index),
-    read="|".join(["R1", "R2"]),
