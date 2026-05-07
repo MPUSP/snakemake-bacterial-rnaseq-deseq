@@ -34,12 +34,6 @@ df_annotation <- dplyr::select(df_counts, all_of(annot_cols))
 df_sample <- read_tsv(samplesheet_file, show_col_types = FALSE) %>%
   mutate(replicate = as.character(replicate))
 
-metadata <- data.frame(
-  condition = factor(df_sample$condition, unique(df_sample$condition)),
-  replicate = factor(df_sample$replicate, unique(df_sample$replicate)),
-  row.names = setdiff(colnames(df_counts), annot_cols)
-)
-
 # check that the order of file names corresponds to colnames of counts
 if (!all(colnames(dplyr::select(df_counts, -any_of(annot_cols))) == df_sample$sample)) {
   messages <- append(messages, paste0(
@@ -48,6 +42,12 @@ if (!all(colnames(dplyr::select(df_counts, -any_of(annot_cols))) == df_sample$sa
   ))
 }
 df_counts <- df_counts[c("locus_tag", df_sample$sample)]
+
+metadata <- data.frame(
+  condition = factor(df_sample$condition, unique(df_sample$condition)),
+  replicate = factor(df_sample$replicate, unique(df_sample$replicate)),
+  row.names = setdiff(colnames(df_counts), annot_cols)
+)
 
 # check study design
 n_conditions <- length(levels(metadata$condition))
@@ -150,6 +150,7 @@ if (shrink && shrink_type %in% c("apeglm", "ashr")) {
       deseq_data_releveled <- quiet_deseq(deseq_data)$result
       coefs <- df_comparison %>%
         filter(factor == ref[1], reference == ref[2]) %>%
+        mutate(across(c(condition, reference), ~ str_replace_all(., "\\-", "."))) %>%
         mutate(coef = paste0(factor, "_", condition, "_vs_", reference)) %>%
         pull(coef)
       lapply(coefs, function(coef) {
@@ -166,7 +167,8 @@ if (shrink && shrink_type %in% c("apeglm", "ashr")) {
         bind_rows() %>%
         mutate(stat = NA) %>%
         tidyr::separate(coef, into = c("factor", "reference"), sep = "\\_vs\\_") %>%
-        tidyr::separate(factor, into = c("factor", "condition"), sep = "\\_", extra = "merge")
+        tidyr::separate(factor, into = c("factor", "condition"), sep = "\\_", extra = "merge") %>%
+        mutate(across(c(condition, reference), ~ str_replace_all(., "\\.", "-")))
     }) %>%
     bind_rows()
   #

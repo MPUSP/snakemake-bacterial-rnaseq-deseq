@@ -420,7 +420,7 @@ plot_replicate_pca <- df_PCA %>%
     subtitle = "Point size: PC3, color: condition, number: replicate.", x = "PC1", y = "PC2"
   ) +
   custom_theme(legend.position = "bottom", aspect.ratio = 1) +
-  scale_color_manual(values = colorRampPalette(custom_colors)(length(unique(df_PCA$condition))))
+  scale_color_manual(values = custom_range(length(unique(df_PCA$condition))))
 
 save_plot(plot_replicate_pca, width = 7, height = 7)
 print(plot_replicate_pca)

@@ -6,6 +6,7 @@ properties:
     description: sample name/identifier
   condition:
     type: string
+    pattern: "^[a-zA-Z0-9_-]+$"
     description: sample condition that will be compared during differential analysis
   replicate:
     type: number

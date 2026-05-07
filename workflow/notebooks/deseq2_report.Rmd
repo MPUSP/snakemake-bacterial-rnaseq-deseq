@@ -234,6 +234,8 @@ data_vst <- tryCatch(
 
 ```{r, fig.width = 7, fig.height = 7}
 df_pca <- plotPCA(data_vst, intgroup = "condition", returnData = TRUE)
+percent_var <- round(100 * attr(df_pca, "percentVar"))
+
 plot_pca <- df_pca %>%
   mutate(condition = fct_inorder(condition)) %>%
   ggplot(aes(x = PC1, y = PC2, color = condition, label = name)) +
@@ -245,10 +247,12 @@ plot_pca <- df_pca %>%
   ) +
   labs(
     title = "PCA, first two principal components",
-    subtitle = "Color: condition, labels: sample name.", x = "PC1", y = "PC2"
+    subtitle = "Color: condition, labels: sample name.",
+    x = paste0("PC1 (", percent_var[1], "% variance)"),
+    y = paste0("PC2 (", percent_var[2], "% variance)")
   ) +
   custom_theme(legend.position = "bottom", aspect.ratio = 1) +
-  scale_color_manual(values = colorRampPalette(custom_colors)(length(unique(df_pca$condition))))
+  scale_color_manual(values = custom_range(length(unique(df_pca$condition))))
 
 save_plot(plot_pca, width = 7, height = 7)
 print(plot_pca)
@@ -318,7 +322,7 @@ plot_size_factors <- estimateSizeFactors(deseq_data) %>%
   ) +
   custom_theme(legend.position = "bottom") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
-  scale_color_manual(values = colorRampPalette(custom_colors)(length(unique(df_deseq$condition))))
+  scale_color_manual(values = custom_range(length(unique(df_deseq$condition))))
 
 save_plot(plot_size_factors, width = 7, height = 7)
 print(plot_size_factors)
