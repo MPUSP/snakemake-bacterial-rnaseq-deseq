@@ -1,5 +1,37 @@
 # Changelog
 
+## [2.0.0](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/compare/v1.0.0...v2.0.0) (2026-05-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* added apptainer
+
+### Features
+
+* adapation to refactored processing workflow ([c0df74e](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/c0df74eae8a9b4a1d88330ca923778d3d74f4d70))
+* added apptainer ([d734ae0](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/d734ae0b090e7203fa25a866aad38b6a3ec9df22))
+* added heat maps for regulated genes ([c49635d](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/c49635d1834e01ca6b1547448807eeb87bea12b0))
+* added log2FC shrinkage options, docs ([41b9761](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/41b9761c9b1c78e40fa8eb01106c3f794e19c26f))
+* added option to filter by biotype, adapted schema and reports ([dfbe1a7](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/dfbe1a71fdd0a4a47dbb7d69bb866862fd83cac6))
+* various improvements and adaptions to be in par with processing workflow ([5f2ccba](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/5f2ccba9041195444eafc358dcd4c4286c77814d))
+
+
+### Bug Fixes
+
+* all comparisons work now as expected regardless of shrinking ([4f69d2c](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/4f69d2cf234d38048f662b9cba07165d55f0c45f))
+* bug saving correct file, reordering, closes [#12](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/issues/12) ([f278ab5](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/f278ab5962a3e4496dcc68c8686717284ff9c3f2))
+* bug when trivial names are missing ([e9aa2f4](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/e9aa2f4132a8804ec777993d770124e61753df82))
+* comparisons are now correctly parsed with shrinkage apeglm, ashr ([a637b4f](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/a637b4f9036b702019d5c566309b7e0b5bb69e58))
+* error catching when plotting PCA with sparse data ([e6c75c2](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/e6c75c23558eaaffd41b645d7408b052ab8fe89f))
+* improvements and fixes for some diagnostics ([2e33bb3](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/2e33bb3cd765936459adbf6a3a4c20ce379b2aeb))
+* minor bug fixes, schemas ([c7c58cd](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/c7c58cdbf4044ca33c530212ca5dee057a765c6d))
+* review comments ([66f16bb](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/66f16bb863378a98d21e1aa60eb83e9c7c02c6d1))
+* safe parsing of condition names, minor fixes ([01333f8](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/01333f8775a7f23b453d839f1c253b1f9a0e8883))
+* try PCA even when number of genes is low ([639e833](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/639e83303439ec04db0d0e2cfb0c116b3d0d0e86))
+* update config options and schema ([a371045](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/a371045715d05b3d40b773a0f271d9fc5dff3183))
+* update GH actions, closes [#17](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/issues/17) ([9042270](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/9042270089b715a22ab89ca7cf34b85abff2cf49))
+
 ## 1.0.0 (2025-10-08)
 
 
