@@ -49,8 +49,3 @@ rule all:
         "results/multiqc/multiqc_report.html",
         "results/deseq2/counts_report.html",
         "results/deseq2/deseq2_report.html",
-        expand(
-            "results/deduplicated/{sample}_cpm_{strand}.bw",
-            sample=samples.index,
-            strand=["plus", "minus"],
-        ),
