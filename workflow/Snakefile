@@ -18,7 +18,7 @@ module rnaseq_processing:
         github(
             "MPUSP/snakemake-bacterial-rnaseq-processing",
             path="workflow/Snakefile",
-            branch="main",
+            tag="v2.0.0",
         )
     config:
         config
