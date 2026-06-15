@@ -15,6 +15,7 @@ suppressWarnings({
 counts_file <- snakemake@input[["counts_filtered"]]
 samplesheet_file <- snakemake@input[["samplesheet"]]
 genome_gff <- snakemake@input[["gff"]]
+annot_cols <- snakemake@config[["deseq2"]][["identifiers"]]
 deseq_results_file <- snakemake@output[["deseq_results"]]
 deseq_data_file <- snakemake@output[["deseq_data"]]
 design <- snakemake@config$deseq2$design
@@ -29,19 +30,18 @@ messages <- c()
 
 # import data
 df_counts <- read_csv(counts_file, show_col_types = FALSE)
-annot_cols <- intersect(c("locus_tag", "old_locus_tag", "trivial_name", "gene_biotype"), colnames(df_counts))
 df_annotation <- dplyr::select(df_counts, all_of(annot_cols))
 df_sample <- read_tsv(samplesheet_file, show_col_types = FALSE) %>%
   mutate(replicate = as.character(replicate))
 
 # check that the order of file names corresponds to colnames of counts
-if (!all(colnames(dplyr::select(df_counts, -any_of(annot_cols))) == df_sample$sample)) {
+if (!all(colnames(dplyr::select(df_counts, -any_of(c(annot_cols, "gene_biotype")))) == df_sample$sample)) {
   messages <- append(messages, paste0(
     "Sample names of sample sheet and counts ",
     "matrix do not correspond, reordering."
   ))
 }
-df_counts <- df_counts[c("locus_tag", df_sample$sample)]
+df_counts <- df_counts[c(annot_cols[1], df_sample$sample)]
 
 metadata <- data.frame(
   condition = factor(df_sample$condition, unique(df_sample$condition)),
@@ -162,7 +162,8 @@ if (shrink && shrink_type %in% c("apeglm", "ashr")) {
           BPPARAM = MulticoreParam(n_cores)
         )$result %>%
           as_tibble() %>%
-          mutate(coef = coef, locus_tag = df_counts[[1]])
+          mutate(coef = coef) %>%
+          mutate(!!sym(annot_cols[1]) := df_counts[[1]])
       }) %>%
         bind_rows() %>%
         mutate(stat = NA) %>%
@@ -209,7 +210,7 @@ if (shrink && shrink_type %in% c("apeglm", "ashr")) {
           factor = comp$factor,
           condition = comp$condition,
           reference = comp$reference,
-          locus_tag = df_counts[[1]]
+          !!sym(annot_cols[1]) := df_counts[[1]]
         )
     }) %>%
     bind_rows()
@@ -218,7 +219,7 @@ if (shrink && shrink_type %in% c("apeglm", "ashr")) {
 
 # slightly reformat df
 deseq_result <- deseq_result %>%
-  left_join(df_annotation, by = join_by("locus_tag")) %>%
+  left_join(df_annotation, by = annot_cols[1]) %>%
   dplyr::select(all_of(c("factor", "reference", "condition", annot_cols)), everything()) %>%
   mutate(
     padj = replace(padj, is.na(padj), 1),

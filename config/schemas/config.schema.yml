@@ -149,6 +149,12 @@ properties:
         default: ["protein_coding", "pseudogene", "ncRNA"]
         items:
           type: string
+      identifiers:
+        type: array
+        description: Gene identifiers to include in the DESeq2 results. Must be present in genome GFF attributes. First item must be a *unique* gene ID.
+        default: ["locus_tag", "old_locus_tag", "Name"]
+        items:
+          type: string
       design:
         type: string
         description: DESeq2 design formula for differential expression analysis.
@@ -170,6 +176,13 @@ properties:
         type: number
         description: Log2 fold change threshold for DESeq2 results.
         default: 2.0
+  report:
+    type: object
+    properties:
+      gene_identifier:
+        type: string
+        description: Gene identifier to use in the report. One of deseq2.identifiers or None.
+        default: "Name"
 required:
   - samplesheet
   - libtype

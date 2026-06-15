@@ -68,8 +68,9 @@ custom_range <- function(n = 5, quantitative = FALSE) {
 }
 
 custom_theme <- function(
-    base_size = 12, base_line_size = 1.0,
-    base_rect_size = 1.0, ...) {
+  base_size = 12, base_line_size = 1.0,
+  base_rect_size = 1.0, ...
+) {
   theme_light(
     base_size = base_size,
     base_line_size = base_line_size,
@@ -113,8 +114,9 @@ list_fontpars <- list(face = "plain", size = 14)
 
 # function to export an image as svg and png
 save_plot <- function(
-    pl, path = figure_dir,
-    width = figwidth, height = figheight, index = NA) {
+  pl, path = figure_dir,
+  width = figwidth, height = figheight, index = NA
+) {
   pl_name <- deparse(substitute(pl))
   if (!is.na(index)) pl_name <- paste0(pl_name, "_", index)
   svg(
@@ -141,21 +143,34 @@ save_plot <- function(
 - imported DESeq2 results table `r snakemake@input[["deseq_results"]]`
 
 ```{r}
+annot_cols <- snakemake@config$deseq2$identifiers
+id_col <- snakemake@config$report$gene_identifier
+if (is.null(id_col) || is.na(id_col)) id_col <- annot_cols[1]
+if (!id_col %in% annot_cols) {
+  stop(paste0(
+    "The gene identifier column specified in config 'report/gene_identifier' (", id_col, ") ",
+    "is not included in the annotation columns listed in config 'deseq2/identifiers'."
+  ))
+}
+
 df_samples <- read_tsv(snakemake@input[["samplesheet"]], show_col_types = FALSE)
 df_deseq <- read_csv(snakemake@input[["deseq_results"]], show_col_types = FALSE) %>%
   mutate(significance = factor(significance, levels = c("significant", "not significant"))) %>%
   filter(if_any(all_of(c("log2FoldChange", "lfcSE", "stat", "pvalue")), ~ !is.na(.x))) %>%
-  arrange(factor, condition, reference, locus_tag)
+  arrange(factor, condition, reference, !!sym(id_col))
 
-# check that trivial names exist and add suffixes to duplicated entries
-if (!"trivial_name" %in% colnames(df_deseq)) {
-  df_deseq$trivial_name <- df_deseq$locus_tag
+# check that naming columns exist and add suffixes to duplicated entries
+if (!id_col %in% colnames(df_deseq)) {
+  stop(paste0(
+    "The gene identifier column specified in config 'report/gene_identifier' (", id_col, ") ",
+    "is not included in the DESeq2 results table."
+  ))
 }
 df_deseq <- df_deseq %>%
-  group_by(condition, reference, trivial_name) %>%
-  mutate(trivial_name = case_when(
-    n() > 1 ~ paste0(trivial_name, "_", row_number()),
-    .default = trivial_name
+  group_by(condition, reference, !!sym(id_col)) %>%
+  mutate(!!sym(id_col) := case_when(
+    n() > 1 ~ paste0(!!sym(id_col), "_", row_number()),
+    .default = !!sym(id_col)
   )) %>%
   ungroup()
 
@@ -222,7 +237,7 @@ data_vst <- tryCatch(
       # perform custom transformation, from DESeq2 help section.
       dds <- estimateSizeFactors(deseq_data)
       # shifted log of normalized counts
-      se <- SummarizedExperiment(log2(counts(dds, normalized=TRUE) + 1), colData=colData(dds))
+      se <- SummarizedExperiment(log2(counts(dds, normalized = TRUE) + 1), colData = colData(dds))
       DESeqTransform(se)
     } else {
       message("Variant stabilization failed, retrying with lower subset of genes")
@@ -344,23 +359,27 @@ comparisons <- df_comparison %>%
 replicates <- df_samples %>%
   pull(replicate) %>%
   unique() %>%
-  tidyr::crossing(. , .) %>%
+  tidyr::crossing(., .) %>%
   setNames(c("condition", "reference")) %>%
   distinct() %>%
   filter(!condition == reference) %>%
   inner_join(
     df_deseq %>%
-    filter(factor == "replicate") %>%
-    dplyr::select(condition, reference) %>%
-    mutate(across(everything(), as.numeric)) %>%
-    distinct(),
+      filter(factor == "replicate") %>%
+      dplyr::select(condition, reference) %>%
+      mutate(across(everything(), as.numeric)) %>%
+      distinct(),
     by = join_by(condition, reference)
   ) %>%
   group_by(condition, reference) %>%
   group_split()
 
 get_limit_fc <- function(df) {
-  if (any(abs(range(df$log2FoldChange)) > 2)) {range(df$log2FoldChange)} else {c(-2, 2)}
+  if (any(abs(range(df$log2FoldChange)) > 2)) {
+    range(df$log2FoldChange)
+  } else {
+    c(-2, 2)
+  }
 }
 
 get_limit_pv <- function(df) {
@@ -369,15 +388,23 @@ get_limit_pv <- function(df) {
     return(c(0, 3))
   }
   max_pv <- max(-log10(df$padj), na.rm = TRUE)
-  if (is.finite(max_pv) && max_pv > 3) {c(0, max_pv)} else {c(0, 3)}
+  if (is.finite(max_pv) && max_pv > 3) {
+    c(0, max_pv)
+  } else {
+    c(0, 3)
+  }
 }
 
 get_limit_bm <- function(df) {
-  if (max(df$baseMean) > 10) {c(0.1, max(df$baseMean))} else {c(0.1, 10)}
+  if (max(df$baseMean) > 10) {
+    c(0.1, max(df$baseMean))
+  } else {
+    c(0.1, 10)
+  }
 }
 
 volcano_plot <- function(df) {
-  ggplot(df, aes(x = log2FoldChange, y = -log10(padj), color = significance, label = trivial_name)) +
+  ggplot(df, aes(x = log2FoldChange, y = -log10(padj), color = significance, label = !!sym(id_col))) +
     geom_point(alpha = 0.6, size = 1, show.legend = TRUE) +
     geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 20) +
     labs(
@@ -406,7 +433,7 @@ volcano_plot <- function(df) {
 ```{r, fig.width = 8, fig.height = 8}
 plot_volcano_overview <- df_deseq %>%
   filter(factor == "condition") %>%
-  mutate(trivial_name = "") %>%
+  mutate(!!sym(id_col) := "") %>%
   volcano_plot()
 
 print(plot_volcano_overview)
@@ -422,12 +449,13 @@ for (comp in comparisons) {
   cat("\n\n#### ", comp$condition, " - ", comp$reference, " {-}\n\n")
   plot_volcano <- df_deseq %>%
     filter(condition == comp$condition, reference == comp$reference) %>%
-    mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
+    mutate(!!sym(id_col) := ifelse(significance == "significant", !!sym(id_col), "")) %>%
     volcano_plot()
 
   print(plot_volcano)
   save_plot(
-    plot_volcano, width = 8, height = 8,
+    plot_volcano,
+    width = 8, height = 8,
     index = paste0(comp$condition, "_vs_", comp$reference)
   )
 }
@@ -446,7 +474,7 @@ for (comp in comparisons) {
 ```{r, fig.width = 8, fig.height = 8}
 plot_volcano_overview_rep <- df_deseq %>%
   filter(factor == "replicate") %>%
-  mutate(trivial_name = "") %>%
+  mutate(!!sym(id_col) := "") %>%
   volcano_plot()
 
 print(plot_volcano_overview_rep)
@@ -462,12 +490,13 @@ for (comp in replicates) {
   cat("\n\n#### ", comp$condition, " - ", comp$reference, " {-}\n\n")
   plot_volcano <- df_deseq %>%
     filter(condition == comp$condition, reference == comp$reference) %>%
-    mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
+    mutate(!!sym(id_col) := ifelse(significance == "significant", !!sym(id_col), "")) %>%
     volcano_plot()
 
   print(plot_volcano)
   save_plot(
-    plot_volcano, width = 8, height = 8,
+    plot_volcano,
+    width = 8, height = 8,
     index = paste0(comp$condition, "_vs_", comp$reference)
   )
 }
@@ -484,7 +513,7 @@ for (comp in replicates) {
 
 ```{r}
 ma_plot <- function(df) {
-  ggplot(df, aes(x = baseMean, y = log2FoldChange, color = significance, label = trivial_name)) +
+  ggplot(df, aes(x = baseMean, y = log2FoldChange, color = significance, label = !!sym(id_col))) +
     geom_point(alpha = 0.6, size = 1, show.legend = TRUE) +
     geom_label_repel(size = 3, box.padding = 0.2, max.overlaps = 20) +
     labs(
@@ -514,7 +543,7 @@ ma_plot <- function(df) {
 ```{r, fig.width = 8, fig.height = 8}
 plot_ma_overview <- df_deseq %>%
   filter(factor == "condition") %>%
-  mutate(trivial_name = "") %>%
+  mutate(!!sym(id_col) := "") %>%
   ma_plot()
 
 print(plot_ma_overview)
@@ -530,12 +559,13 @@ for (comp in comparisons) {
   cat("\n\n#### ", comp$condition, " - ", comp$reference, " {-}\n\n")
   plot_ma <- df_deseq %>%
     filter(condition == comp$condition, reference == comp$reference) %>%
-    mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
+    mutate(!!sym(id_col) := ifelse(significance == "significant", !!sym(id_col), "")) %>%
     ma_plot()
 
   print(plot_ma)
   save_plot(
-    plot_ma, width = 8, height = 8,
+    plot_ma,
+    width = 8, height = 8,
     index = paste0(comp$condition, "_vs_", comp$reference)
   )
 }
@@ -555,7 +585,7 @@ for (comp in comparisons) {
 ```{r, fig.width = 8, fig.height = 8}
 plot_ma_overview_rep <- df_deseq %>%
   filter(factor == "replicate") %>%
-  mutate(trivial_name = "") %>%
+  mutate(!!sym(id_col) := "") %>%
   ma_plot()
 
 print(plot_ma_overview_rep)
@@ -571,12 +601,13 @@ for (comp in replicates) {
   cat("\n\n#### ", comp$condition, " - ", comp$reference, " {-}\n\n")
   plot_ma <- df_deseq %>%
     filter(condition == comp$condition, reference == comp$reference) %>%
-    mutate(trivial_name = ifelse(significance == "significant", trivial_name, "")) %>%
+    mutate(!!sym(id_col) := ifelse(significance == "significant", !!sym(id_col), "")) %>%
     ma_plot()
 
   print(plot_ma)
   save_plot(
-    plot_ma, width = 8, height = 8,
+    plot_ma,
+    width = 8, height = 8,
     index = paste0(comp$condition, "_vs_", comp$reference)
   )
 }
@@ -605,16 +636,16 @@ heat_map <- function(df) {
       comparison = paste0(condition, " ~ ", reference),
       comparison = factor(comparison, sort(unique(comparison))),
       log2FoldChange = log2FoldChange %>% replace(., . > 4, 4) %>% replace(., . < -4, -4),
-      trivial_name = substr(trivial_name, 1, 18)
+      !!sym(id_col) := substr(!!sym(id_col), 1, 18)
     )
-  if (length(unique(df$trivial_name)) > 1) {
+  if (length(unique(df[[id_col]])) > 1) {
     df <- df %>%
       mutate(
-        trivial_name = fct_cluster(trivial_name, comparison, log2FoldChange)
+        !!sym(id_col) := fct_cluster(!!sym(id_col), comparison, log2FoldChange)
       )
   }
   df %>%
-    ggplot(aes(x = trivial_name, y = comparison, fill = log2FoldChange)) +
+    ggplot(aes(x = !!sym(id_col), y = comparison, fill = log2FoldChange)) +
     geom_tile() +
     labs(
       x = "", y = "",
@@ -631,8 +662,10 @@ heat_map <- function(df) {
       axis.text.x = element_text(angle = 90, vjust = 0.5, size = 6),
       axis.text.y = element_text(size = 6)
     ) +
-    scale_fill_gradientn(colours = c(custom_colors[1], grey(0.9), custom_colors[2]),
-      limits = c(-4, 4))
+    scale_fill_gradientn(
+      colours = c(custom_colors[1], grey(0.9), custom_colors[2]),
+      limits = c(-4, 4)
+    )
 }
 ```
 

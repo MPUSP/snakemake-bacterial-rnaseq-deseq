@@ -63,8 +63,12 @@ multiqc:
 
 deseq2:
   biotypes: ["protein_coding", "pseudogene", "ncRNA"]
+  identifiers: ["locus_tag", "old_locus_tag", "Name"]
   design: "~ condition + replicate"
   lfc_shrinkage: false
   lfc_shrinkage_type: "normal"
   threshold_pval: 0.05
   threshold_log2fc: 2.0
+
+report:
+  gene_identifier: "Name"
