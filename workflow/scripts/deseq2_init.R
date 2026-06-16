@@ -6,6 +6,7 @@ suppressPackageStartupMessages({
   library(rtracklayer)
 })
 
+# import snakemake variables
 counts_files <- snakemake@input[["counts_dir"]]
 gff_file <- snakemake@input[["gff"]]
 samplesheet_file <- snakemake@input[["samplesheet"]]
@@ -13,12 +14,17 @@ output_merged <- snakemake@output[["counts_merged"]]
 output_filtered <- snakemake@output[["counts_filtered"]]
 biotypes <- snakemake@config[["deseq2"]][["biotypes"]]
 annot_cols <- snakemake@config[["deseq2"]][["identifiers"]]
+if (is.null(annot_cols) || length(annot_cols) < 1) {
+  stop("Config entry 'deseq2/identifiers' must be a non-empty array.")
+}
 id_col <- annot_cols[1]
-
 messages <- c()
+
+# import sample sheet
 df_sample <- read_tsv(samplesheet_file, show_col_types = FALSE)
 sample_order <- df_sample$sample
 
+# import counts files into list
 df_merged_counts <- lapply(counts_files, function(file) {
   df <- read_tsv(file, comment = "#", show_col_types = FALSE)
   df <- df[, c("Geneid", colnames(df)[ncol(df)])]
@@ -43,6 +49,13 @@ if (!all(colnames(df_merged_counts)[-1] == sample_order)) {
 # merge data with annotation from gff file; do some tests
 df_gff <- as_tibble(rtracklayer::import.gff(gff_file)) %>%
   dplyr::select(any_of(c(annot_cols, "gene_biotype")))
+if (!all(annot_cols %in% colnames(df_gff))) {
+  stop(paste0(
+    "Not all identifiers specified in config 'deseq2/identifiers' are ",
+    "present in the GFF file. Please check that gene annotation contains the ",
+    "following attributes: ", paste(annot_cols, collapse = ", ")
+  ))
+}
 if ("gene_biotype" %in% colnames(df_gff) && !is.null(biotypes)) {
   df_gff <- filter(df_gff, !is.na(gene_biotype))
   duplicated_ids <- filter(df_gff, gene_biotype %in% biotypes) %>%
