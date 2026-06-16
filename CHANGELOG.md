@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.1.0](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/compare/v2.0.0...v2.1.0) (2026-06-15)
+
+
+### Features
+
+* add generation of normalized bigiwg files to target. fix rnaseq-processing version for reporducibility. ([765af95](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/765af950fd99398878a792804b33b821dbbb53b8))
+
+
+### Bug Fixes
+
+* remove CPM output from targets to make pipelines self-contained. ([73c1c56](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/73c1c56ed7504442c8a9cd91f0268ebe8478d762))
+
 ## [2.0.0](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/compare/v1.0.0...v2.0.0) (2026-05-07)
 
 
