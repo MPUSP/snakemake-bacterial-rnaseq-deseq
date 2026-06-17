@@ -59,8 +59,9 @@ custom_range <- function(n = 5, quantitative = FALSE) {
 }
 
 custom_theme <- function(
-    base_size = 12, base_line_size = 1.0,
-    base_rect_size = 1.0, ...) {
+  base_size = 12, base_line_size = 1.0,
+  base_rect_size = 1.0, ...
+) {
   theme_light(
     base_size = base_size,
     base_line_size = base_line_size,
@@ -104,8 +105,9 @@ list_fontpars <- list(face = "plain", size = 14)
 
 # function to export an image as svg and png
 save_plot <- function(
-    pl, path = figure_dir,
-    width = figwidth, height = figheight, index = NA) {
+  pl, path = figure_dir,
+  width = figwidth, height = figheight, index = NA
+) {
   pl_name <- deparse(substitute(pl))
   if (!is.na(index)) pl_name <- paste0(pl_name, "_", index)
   svg(
@@ -136,15 +138,13 @@ save_plot <- function(
 samplesheet <- snakemake@input[["samplesheet"]]
 all_counts <- snakemake@input[["counts_merged"]]
 filtered_counts <- snakemake@input[["counts_filtered"]]
+annot_cols <- c(snakemake@config[["deseq2"]][["identifiers"]], "gene_biotype")
 
-annot_cols <- c("old_locus_tag", "trivial_name", "gene_biotype")
 df_samples <- read_tsv(samplesheet, show_col_types = FALSE)
 df_all_counts <- read_csv(all_counts, show_col_types = FALSE) %>%
-  dplyr::select(-any_of(annot_cols)) %>%
-  pivot_longer(cols = -c(locus_tag), names_to = "sample", values_to = "n_reads")
+  pivot_longer(cols = -any_of(annot_cols), names_to = "sample", values_to = "n_reads")
 df_filtered_counts <- read_csv(filtered_counts, show_col_types = FALSE) %>%
-  dplyr::select(-any_of(annot_cols)) %>%
-  pivot_longer(cols = -c(locus_tag), names_to = "sample", values_to = "n_reads")
+  pivot_longer(cols = -any_of(annot_cols), names_to = "sample", values_to = "n_reads")
 
 # list of samples + generic options
 figwidth <- 9
@@ -306,7 +306,7 @@ print(plot_reads_per_gene_hist)
 plot_top10_genes <- df_filtered_counts %>%
   dplyr::group_by(sample) %>%
   dplyr::arrange(sample, desc(n_reads)) %>%
-  dplyr::mutate(rank = seq_along(locus_tag)) %>%
+  dplyr::mutate(rank = seq_along(.data[[annot_cols[1]]])) %>%
   dplyr::filter(between(rank, 1, 10)) %>%
   ggplot(aes(x = factor(rank), y = n_reads)) +
   geom_col(fill = custom_colors[1], alpha = 0.7, width = 1) +
@@ -394,7 +394,7 @@ df_auc %>%
 ```{r, fig.width = 7, fig.height = 7, warning = FALSE}
 pca_result <- df_filtered_counts %>%
   tidyr::pivot_wider(names_from = "sample", values_from = "n_reads") %>%
-  dplyr::select(-locus_tag) %>%
+  dplyr::select(-any_of(annot_cols)) %>%
   as.matrix() %>%
   t() %>%
   replace(., is.na(.), 0) %>%
@@ -436,7 +436,7 @@ print(plot_replicate_pca)
 ```{r, fig.width = 7.5, fig.height = 7, warning = FALSE}
 df_correlation <- df_filtered_counts %>%
   tidyr::pivot_wider(names_from = "sample", values_from = "n_reads") %>%
-  dplyr::select(-locus_tag) %>%
+  dplyr::select(-any_of(annot_cols)) %>%
   cor()
 
 max_reps <- length(unique(df_samples$replicate))
@@ -451,7 +451,7 @@ plot_replicate_correlation <- df_correlation %>%
   ggplot(aes(x = sample1, y = sample2, fill = correlation)) +
   geom_tile() +
   geom_hline(yintercept = seq(0.5, nrow(df_samples) + 0.5, by = max_reps), colour = grey(0.9)) +
-  geom_vline(xintercept = seq(0.5, nrow(df_samples) + 0.5, by = max_reps), colour = grey(0.9)) + 
+  geom_vline(xintercept = seq(0.5, nrow(df_samples) + 0.5, by = max_reps), colour = grey(0.9)) +
   geom_text(
     size = 3 + 1 / nrow(df_samples),
     color = grey(0.4),
