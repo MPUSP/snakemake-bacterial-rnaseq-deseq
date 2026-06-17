@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.2.0](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/compare/v2.1.0...v2.2.0) (2026-06-17)
+
+
+### Features
+
+* added new options to control usage of gene IDs ([638450c](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/638450ceaa164f72fd19c0fcd1c3803af2d9ed61))
+* added new options to control usage of gene IDs ([f4514f4](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/f4514f4a0891e1d52ff5bd834dbe53363527b2e4))
+
+
+### Bug Fixes
+
+* review comments ([c6395c5](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/c6395c579dffa24efb355105bbf7b0b14ae30da7))
+
 ## [2.1.0](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/compare/v2.0.0...v2.1.0) (2026-06-15)
 
 
