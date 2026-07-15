@@ -10,7 +10,7 @@ include: "rules/deseq2.smk"
 
 
 # container definition (optional)
-container: "oras://ghcr.io/mpusp/snakemake-bacterial-rnaseq-deseq:latest"
+containerized: "oras://ghcr.io/mpusp/snakemake-bacterial-rnaseq-deseq:latest"
 
 
 module rnaseq_processing:
