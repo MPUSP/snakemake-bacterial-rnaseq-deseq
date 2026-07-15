@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.1](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/compare/v2.2.0...v2.2.1) (2026-07-15)
+
+
+### Bug Fixes
+
+* container directive ([65a1728](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/65a172845cca1310c86ba69871895901ba83c4c2))
+* container directive ([7da8ef3](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/7da8ef32a5f62ecf310c9056dbfa32d2cc566792))
+
 ## [2.2.0](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/compare/v2.1.0...v2.2.0) (2026-06-17)
 
 
