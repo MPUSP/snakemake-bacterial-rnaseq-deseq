@@ -4,6 +4,7 @@ channels:
   - bioconda
   - nodefaults
 dependencies:
+  - jq=1.8.2
   - r-base=4.4.2
   - r-tidyverse=2.0.0
   - r-ggrepel=0.9.6
