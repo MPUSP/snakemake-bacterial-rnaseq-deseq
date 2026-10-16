@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.2](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/compare/v2.2.1...v2.2.2) (2026-10-16)
+
+
+### Bug Fixes
+
+* missing dep for container ([ca3740d](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/ca3740d08a61cf7c6a6131f29aa93c04ad40e180))
+* missing dep for container ([f7d8199](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/commit/f7d81998d13de347289fa020ce0b82545c7dc756))
+
 ## [2.2.1](https://github.com/MPUSP/snakemake-bacterial-rnaseq-deseq/compare/v2.2.0...v2.2.1) (2026-07-15)
 
 
